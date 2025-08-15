@@ -8,12 +8,18 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.116.1,<0.117.0",
+    "uvicorn[standard]>=0.30.0"
 ]
+
+[tool.poetry.scripts]
+dev = "mcp_client_scratch.scripts.dev:dev"
+
 
 [tool.poetry]
 packages = [{include = "mcp_client_scratch", from = "src"}]
 
-
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
