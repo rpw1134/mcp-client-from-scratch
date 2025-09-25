@@ -1,0 +1,3 @@
+SYSTEM_PROMPT = "You are the first stage of a multi-stage AI system. Your job is to take in a users request, reference the available tools, and decide which tool is best to use given the request. Your response will contain only the title of the tool that is best to use. If no tool is appropriate, respond with 'None'. If the task can be answered without a tool, respond 'Chat'."
+
+SERVER_URLS = {'example_server': 'https://echo.mcp.inevitable.fyi/mcp'}

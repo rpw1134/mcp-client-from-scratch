@@ -4,6 +4,8 @@ from typing import Optional
 import os
 import dotenv
 from .utils.make_request import AI_request
+from .utils.constants import SYSTEM_PROMPT, SERVER_URLS
+from .mcp.init_connection import init_connection
 
 # Load environment variables from .env file
 dotenv.load_dotenv()
@@ -27,7 +29,12 @@ class ChatRequest(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"message": "MCP Client API is running!"}
+    try:
+        connection_response = await init_connection(SERVER_URLS['example_server'])
+    except Exception as e:
+        connection_response = {"error": str(e)}
+    
+    return {"message": "MCP Client API is running!", "connection_response": connection_response}
 
 @app.get("/health")
 async def health_check():
@@ -39,6 +46,7 @@ async def chat(request: ChatRequest):
     response = AI_request(request.message)  # Call the async AI_request function
     
     return response
+
 
 # MCP request endpoint
 @app.post("/mcp/execute", response_model=MCPResponse)
