@@ -6,6 +6,7 @@ import dotenv
 from .utils.make_request import AI_request
 from .utils.constants import SYSTEM_PROMPT, SERVER_URLS
 from .mcp.init_connection import init_connection
+from .mcp.MCPClient import HTTPMCPClient
 
 # Load environment variables from .env file
 dotenv.load_dotenv()
@@ -30,7 +31,9 @@ class ChatRequest(BaseModel):
 @app.get("/")
 async def root():
     try:
-        connection_response = await init_connection(SERVER_URLS['example_server'])
+        first_test_url = "http://localhost:3001/mcp"
+        http_client = HTTPMCPClient(first_test_url)
+        connection_response = await http_client.initialize_connection()
     except Exception as e:
         connection_response = {"error": str(e)}
     

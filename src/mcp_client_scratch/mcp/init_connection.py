@@ -1,9 +1,7 @@
 import json
 import httpx
-from httpx_sse import aconnect_sse
 
-async def parse_sse(response):
-    print(f"POSTing JSON-RPC request and listening for SSE stream...")
+async def parse_sse(response: httpx.Response) -> dict:
     async for line in response.aiter_lines():
         if line.strip() == "":
             continue
@@ -14,6 +12,7 @@ async def parse_sse(response):
             try:
                 message = json.loads(data)
                 if "jsonrpc" in message and "id" in message:
+                    print("valid")
                     return message
                 else:
                     print("Received non-JSON-RPC message:", message)
@@ -43,7 +42,7 @@ async def init_connection(url: str) -> dict:
     }
     headers = {
         "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream"
+        "Accept": "application/json, text/event-stream, text/html"
     }
     
     async with httpx.AsyncClient(headers=headers) as client:
@@ -53,6 +52,7 @@ async def init_connection(url: str) -> dict:
                 headers = response.headers
                 content_type = headers.get("Content-Type", "")
                 message = {}
+                print(response)
                 print("Response Content-Type:", content_type)
                 match content_type:
                     case "text/event-stream":
@@ -63,6 +63,9 @@ async def init_connection(url: str) -> dict:
                         print("JSON response detected. Parsing...")
                         json_response = await response.json()
                         return json_response
+                    case "text/html":
+                        print("HTML response detected. Parsing...")
+                        return {"error": f"Received HTML response: {response}"}
                     case _:
                         return {"error": f"Unexpected Content-Type: {content_type}"}
         
