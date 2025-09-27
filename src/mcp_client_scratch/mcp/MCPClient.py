@@ -1,6 +1,6 @@
 from ..utils.enums import TransportType
 from ..utils.constants import INIT_HEADERS, INIT_PAYLOAD
-from .init_connection import parse_sse
+from ..utils.parse_responses import parse_sse
 import subprocess
 import json
 import asyncio

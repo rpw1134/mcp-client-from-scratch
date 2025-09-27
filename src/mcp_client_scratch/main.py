@@ -5,7 +5,6 @@ import os
 import dotenv
 from .utils.make_request import AI_request
 from .utils.constants import SYSTEM_PROMPT, SERVER_URLS
-from .mcp.init_connection import init_connection
 from .mcp.MCPClient import HTTPMCPClient, STDIOMCPClient
 
 # Load environment variables from .env file
