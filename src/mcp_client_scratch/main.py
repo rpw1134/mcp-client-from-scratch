@@ -6,7 +6,7 @@ import dotenv
 from .utils.make_request import AI_request
 from .utils.constants import SYSTEM_PROMPT, SERVER_URLS
 from .mcp.init_connection import init_connection
-from .mcp.MCPClient import HTTPMCPClient
+from .mcp.MCPClient import HTTPMCPClient, STDIOMCPClient
 
 # Load environment variables from .env file
 dotenv.load_dotenv()
@@ -31,13 +31,15 @@ class ChatRequest(BaseModel):
 @app.get("/")
 async def root():
     try:
-        first_test_url = "http://localhost:3001/mcp"
-        http_client = HTTPMCPClient(first_test_url)
-        connection_response = await http_client.initialize_connection()
+        # http_client = HTTPMCPClient(url=SERVER_URLS['example_server'])
+        # http_response = await http_client.initialize_connection()
+        stdio_test_args = SERVER_URLS['local_everything_server_stdio']
+        stdio_client = STDIOMCPClient(stdio_test_args[0], stdio_test_args[1], stdio_test_args[2] if len(stdio_test_args) > 2 else "./")
+        stdio_response = await stdio_client.initialize_connection()
     except Exception as e:
-        connection_response = {"error": str(e)}
+        stdio_response = {"error": str(e)}
     
-    return {"message": "MCP Client API is running!", "connection_response": connection_response}
+    return {"message": "MCP Client API is running!", "stdio_response": stdio_response}
 
 @app.get("/health")
 async def health_check():
