@@ -15,6 +15,14 @@ class BaseMCPClient(ABC):
     
     def health_check(self) -> dict:
         return {"status": "healthy", "service": "mcp-client"}
+    
+    @abstractmethod
+    async def _get_tools(self) -> dict:
+        pass
+    
+    @abstractmethod
+    async def _continuous_read(self):
+        pass
         
     
     
@@ -47,13 +55,13 @@ class STDIOMCPClient(BaseMCPClient):
             
             while True:
                 try:
-                    err = await asyncio.wait_for(self.process.stderr.readline(), timeout=5.0)
+                    err = await asyncio.wait_for(self.process.stderr.readline(), timeout=1.0)
                 except TimeoutError:
                     print("done startup output")
                     break
             while True:
                 try:
-                    out = await asyncio.wait_for(self.process.stdout.readline(), timeout=5.0)
+                    out = await asyncio.wait_for(self.process.stdout.readline(), timeout=1.0)
                 except TimeoutError:
                     print("done startup errors")
                     break
@@ -84,25 +92,42 @@ class STDIOMCPClient(BaseMCPClient):
             if self.process.stdin.is_closing():
                 raise RuntimeError("Subprocess stdin is closed.")
 
-            print("Initialization message sent, awaiting response...")
-            
-
-            response_line = await asyncio.wait_for(self.process.stdout.readline(), timeout=5.0)   
+            response_line = await asyncio.wait_for(self.process.stdout.readline(), timeout=2.0)   
             response = ""
             if response_line:
                 response = response_line.decode().strip()
                 print("Received response:", response)  
-                
-            print('end')
+            
+            asyncio.create_task(self._continuous_read())
+            
             return json.loads(response)
         
         except Exception as e:
             return {"error": f"Failed to send initialization message: {e}"}
-    
-    
-    
-    
+        
+    async def _get_tools(self) -> dict:
+        return {}
 
+    async def _continuous_read(self):
+        if not self.process or not self.process.stdout:
+            raise RuntimeError("Subprocess not initialized or stdout not available.")
+        try:
+            while True:
+                response_line = await self.process.stdout.readline()
+                if not response_line:
+                    raise RuntimeError("Subprocess stdout closed unexpectedly.")
+                response = response_line.decode().strip()
+                print("Received response:", response)
+                
+        except json.JSONDecodeError as e:
+            print(f"Invalid JSON received")
+            
+        except Exception as e:
+            print(f"Error in continuous read: {e}")
+            await self._kill_process()
+    
+    
+    
 
 class HTTPMCPClient(BaseMCPClient):
     
@@ -138,4 +163,10 @@ class HTTPMCPClient(BaseMCPClient):
                 return {"error": f"Request Error: {e}"}
             except Exception as e:
                 return {"error": f"Unexpected error: {e}"}
+    
+    async def _get_tools(self) -> dict:
+        return {}
+
+    async def _continuous_read(self):
+        pass
         
