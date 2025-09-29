@@ -35,10 +35,12 @@ async def root():
         stdio_test_args = SERVER_URLS['local_everything_server_stdio']
         stdio_client = STDIOMCPClient(stdio_test_args[0], stdio_test_args[1], stdio_test_args[2] if len(stdio_test_args) > 2 else "./")
         stdio_response = await stdio_client.initialize_connection()
+        stdio_tools = await stdio_client.get_tools()
     except Exception as e:
         stdio_response = {"error": str(e)}
+        stdio_tools = {"error": str(e)}
     
-    return {"message": "MCP Client API is running!", "stdio_response": stdio_response}
+    return {"message": "MCP Client API is running!", "stdio_tools": stdio_tools}
 
 @app.get("/health")
 async def health_check():

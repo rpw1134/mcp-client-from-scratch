@@ -9,7 +9,6 @@ INIT_PAYLOAD = {
         "params": {
             "protocolVersion": "2024-11-05",
             "capabilities": {
-                "roots": {"listChanged": True},
                 "sampling": {}
             },
             "clientInfo": {
@@ -19,7 +18,15 @@ INIT_PAYLOAD = {
         }
     }
 
+TOOLS_PAYLOAD = {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/list",
+        "params":{}
+}
+
 INIT_HEADERS = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream, text/html"
     }
+
