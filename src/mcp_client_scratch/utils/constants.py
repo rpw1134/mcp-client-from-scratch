@@ -27,6 +27,6 @@ TOOLS_PAYLOAD = {
 
 INIT_HEADERS = {
         "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream, text/html"
+        "Accept": "application/json, text/event-stream"
     }
 

@@ -44,9 +44,11 @@ class STDIOMCPClient(BaseMCPClient):
         super().__init__()
     
     async def _sub_process(self):
+        # parse full server start command
         full_command = [self.command] + self.args
 
         try:
+            # start the subprocess, set up stdin, stdout, stderr pipes
             process = await asyncio.create_subprocess_exec(
                 *full_command,
                 stdin=asyncio.subprocess.PIPE,
@@ -54,13 +56,17 @@ class STDIOMCPClient(BaseMCPClient):
                 stderr=asyncio.subprocess.PIPE,
                 cwd=self.wkdir
             )
+            
+            # set class variable to process
             self.process = process
         
+            # ensure pipes set properly
             if not self.process.stderr:
                 raise RuntimeError("Subprocess stderr not available.")
             if not self.process.stdout:
                 raise RuntimeError("Subprocess stdout not available.")
             
+            # clear initial buffers
             while True:
                 try:
                     await asyncio.wait_for(self.process.stderr.readline(), timeout=0.2)
@@ -74,6 +80,7 @@ class STDIOMCPClient(BaseMCPClient):
                 
             print("Subprocess started with PID:", process.pid)
             return process
+        
         except Exception as e:
             raise RuntimeError(f"Failed to start subprocess: {e}")
     
@@ -172,51 +179,66 @@ class STDIOMCPClient(BaseMCPClient):
         return response
     
     
-    async def send_notification(self, method, params=None):
-      notification = {
-          "jsonrpc": "2.0",
-          "method": method,
-          "params": params or {}
-      }
-      try:
-        if not self.process or not self.process.stdin:
-              raise RuntimeError("Subprocess not initialized or stdin not available.")
-        message = json.dumps(notification) + "\n"
-        self.process.stdin.write(message.encode())
-        await self.process.stdin.drain()
-      except Exception as e:
-          print(f"Failed to send notification: {e}")
-          return
+    async def send_notification(self, method: str, params: dict={}):
+        # define notification payload
+        notification = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params
+        }
+        
+        try:
+            # check process status, write notification to stdin, drain buffer
+            if not self.process or not self.process.stdin:
+                    raise RuntimeError("Subprocess not initialized or stdin not available.")
+            message = json.dumps(notification) + "\n"
+            self.process.stdin.write(message.encode())
+            await self.process.stdin.drain()
+        
+        except Exception as e:
+            print(f"Failed to send notification: {e}. Please try again.")
 
     
-            
-        
     async def get_tools(self) -> dict:
+        # make request for a given set of tools
         response = await self.send_request(TOOLS_PAYLOAD)
         return response
 
     async def _continuous_read(self):
+        # check validity of 
         if not self.process or not self.process.stdout:
             raise RuntimeError("Subprocess not initialized or stdout not available.")
         try:
+            # set continuous read loop
             while True:
                 response_line = await self.process.stdout.readline()
+                
+                # if no response line, subprocess has closed stdout, raise error
                 if not response_line:
                     raise RuntimeError("Subprocess stdout closed unexpectedly.")
+                
+                # read response and decode into a dict
                 response = response_line.decode().strip()
                 print("Received response:", response)
                 return_response = json.loads(response)
+                
+                # if a response, resolve associated request future
                 if "id" in return_response and return_response["id"] in self.waiting_requests:
                     print("Response Received for ID:", return_response["id"])
                     future = self.waiting_requests[return_response["id"]]
                     if not future.done():
                         future.set_result(return_response)
+                
+                # TODO: future notification handling
                 else:
                     print("Notification Received:", response)
-                
+        
+        #TODO: exponential backoff and retry logic
+        except RuntimeError as re:
+            print(f"Runtime error in continuous read: {re}")
+            await self._kill_process()
         except json.JSONDecodeError as e:
             print(f"Invalid JSON received")
-            
         except Exception as e:
             print(f"Error in continuous read: {e}")
             await self._kill_process()
@@ -227,29 +249,32 @@ class HTTPMCPClient(BaseMCPClient):
         self.url = url
     
     async def initialize_connection(self) -> dict:
+        # initialize http client
+        # TODO: pooling?
         async with httpx.AsyncClient(headers=INIT_HEADERS) as client:
             try:
                 async with client.stream("POST", self.url, json=INIT_PAYLOAD) as response:
+                    # parse headers and content type from response
                     headers = response.headers
                     content_type = headers.get("Content-Type", "")
                     message = {}
                     
                     match content_type:
+                        # if sse, parse as sse
                         case "text/event-stream":
                             print("SSE stream detected. Parsing...")
                             message = await parse_sse(response)
                             return message
+                        # if json, parse as json
                         case "application/json":
                             print("JSON response detected. Parsing...")
                             json_response = await response.json()
                             return json_response
-                        case "text/html":
-                            print("HTML response detected. Parsing...")
-                            return {"error": f"Received HTML response: {response}"}
+                        # TODO: handle streamed json
                         case _:
                             return {"error": f"Unexpected Content-Type: {content_type}"}
         
-                return {"error": "SSE stream closed before a valid JSON-RPC message was received."}
+                return {"error": "Stream closed before a valid JSON-RPC message was received."}
 
             except httpx.RequestError as e:
                 return {"error": f"Request Error: {e}"}
