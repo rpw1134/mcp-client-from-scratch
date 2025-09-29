@@ -5,7 +5,7 @@ import os
 import dotenv
 from .utils.make_request import AI_request
 from .utils.constants import SYSTEM_PROMPT, SERVER_URLS
-from .classes.MCPClient import HTTPMCPClient, STDIOMCPClient
+from .classes.MCPClient_copy import HTTPMCPClient, STDIOMCPClient
 
 # Load environment variables from .env file
 dotenv.load_dotenv()
