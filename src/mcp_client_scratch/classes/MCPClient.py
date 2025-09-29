@@ -1,7 +1,5 @@
-from ..utils.enums import TransportType
 from ..utils.constants import INIT_HEADERS, INIT_PAYLOAD, TOOLS_PAYLOAD
 from ..utils.parse_responses import parse_sse
-import subprocess
 import json
 import asyncio
 import httpx
@@ -32,8 +30,6 @@ class BaseMCPClient(ABC):
     def health_check(self) -> dict:
         return {"status": "healthy", "service": "mcp-client"}
         
-    
-    
     
 class STDIOMCPClient(BaseMCPClient):
     
