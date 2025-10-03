@@ -1,4 +1,4 @@
-from ..utils.constants import INIT_HEADERS, INIT_PAYLOAD, TOOLS_PAYLOAD
+from ..utils.constants import INIT_HEADERS, INIT_PAYLOAD, TOOLS_PAYLOAD, BASE_TOOLS
 from ..utils.parse_responses import parse_sse
 import json
 import asyncio
@@ -11,7 +11,7 @@ class BaseMCPClient(ABC):
     def __init__(self):
         self.current_id : int = 1
         self.waiting_requests : dict[int, asyncio.Future] = {}
-        self.tools = {}
+        self.tools = {**BASE_TOOLS}
     
     @abstractmethod
     async def initialize_connection(self) -> dict:
@@ -35,7 +35,7 @@ class BaseMCPClient(ABC):
     def _set_tools(self, tools: dict):
         for tool in tools:
             self.tools[tool["name"]] = tool
-            print(self.tools)
+            self.tools[tool["name"]]["source"] = "server"
         
         
     
@@ -166,7 +166,7 @@ class STDIOMCPClient(BaseMCPClient):
             self._set_tools(response["result"]["tools"])
         else:
             print("No tools found in response or error occurred:", response)
-        return response
+        return self.tools
 
     async def _continuous_read(self):
         # check validity of process
@@ -183,7 +183,6 @@ class STDIOMCPClient(BaseMCPClient):
                     raise RuntimeError("Subprocess stdout closed unexpectedly.")
 
                 # parse response into a dict
-                print("Received response:", response)
                 return_response = json.loads(response)
 
                 # if a response, resolve associated request future

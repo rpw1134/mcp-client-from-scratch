@@ -23,3 +23,4 @@ def AI_request(client: STDIOMCPClient, message: str) -> str:
 
 def get_system_prompt(client: STDIOMCPClient) -> str:
     return SYSTEM_PROMPT_BASE + str(client.tools)
+
