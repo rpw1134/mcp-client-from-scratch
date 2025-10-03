@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from ..dependencies.tests import get_stdio_client, reset_stdio_client
 from ..utils.constants import SERVER_URLS
 from ..classes.MCPClient import STDIOMCPClient
+from ..utils.make_llm_request import AI_request
+from ..schemas.requests import ChatRequest
 
 router = APIRouter(prefix="/tests", tags=["tests"])
 
@@ -29,4 +32,14 @@ async def reinit_stdio_client(stdio_client: STDIOMCPClient = Depends(get_stdio_c
         return {"message": "Stdio client re-initialized"}
     except Exception as e:
         return {"error": str(e)}
+    
+@router.post("/request")
+async def make_stdio_request(request: ChatRequest, stdio_client: STDIOMCPClient = Depends(get_stdio_client)):
+    try:
+        response = AI_request(stdio_client, request.message)
+        return response
+    except Exception as e:
+        return {"error": str(e)}
+
+
 
