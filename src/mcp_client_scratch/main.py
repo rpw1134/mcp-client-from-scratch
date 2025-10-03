@@ -3,15 +3,17 @@ from pydantic import BaseModel
 from typing import Optional
 import os
 import dotenv
-from .utils.make_request import AI_request
+from .utils.make_llm_request import AI_request
 from .utils.constants import SYSTEM_PROMPT, SERVER_URLS
 from .classes.MCPClient import HTTPMCPClient, STDIOMCPClient
+from .routers import tests
 
 # Load environment variables from .env file
 dotenv.load_dotenv()
 
 # Create FastAPI app instance
 app = FastAPI(title="MCP Client: Scratch", version="1.0.0")
+app.include_router(tests.router)
 
 class MCPRequest(BaseModel):
     server_url: str
