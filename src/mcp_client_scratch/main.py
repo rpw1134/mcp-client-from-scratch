@@ -5,7 +5,7 @@ import os
 import dotenv
 from .utils.make_request import AI_request
 from .utils.constants import SYSTEM_PROMPT, SERVER_URLS
-from .classes.MCPClient_copy import HTTPMCPClient, STDIOMCPClient
+from .classes.MCPClient import HTTPMCPClient, STDIOMCPClient
 
 # Load environment variables from .env file
 dotenv.load_dotenv()
@@ -41,6 +41,17 @@ async def root():
         stdio_tools = {"error": str(e)}
     
     return {"message": "MCP Client API is running!", "stdio_tools": stdio_tools}
+
+@app.post("/test-init-stdio")
+async def init_stdio_client():
+    try:
+        stdio_test_args = SERVER_URLS['local_everything_server_stdio']
+        stdio_client = STDIOMCPClient(stdio_test_args[0], stdio_test_args[1], stdio_test_args[2] if len(stdio_test_args) > 2 else "./")
+        await stdio_client.initialize_connection()
+        await stdio_client.get_tools()
+        return stdio_client.tools
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/health")
 async def health_check():

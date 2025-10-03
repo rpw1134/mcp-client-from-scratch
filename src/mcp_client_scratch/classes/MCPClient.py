@@ -4,12 +4,14 @@ import json
 import asyncio
 import httpx
 from abc import ABC, abstractmethod
+from .Process import Process
 
 class BaseMCPClient(ABC):
     
     def __init__(self):
         self.current_id : int = 1
         self.waiting_requests : dict[int, asyncio.Future] = {}
+        self.tools = {}
     
     @abstractmethod
     async def initialize_connection(self) -> dict:
@@ -29,6 +31,12 @@ class BaseMCPClient(ABC):
     
     def health_check(self) -> dict:
         return {"status": "healthy", "service": "mcp-client"}
+    
+    def _set_tools(self, tools: dict):
+        for tool in tools:
+            self.tools[tool["name"]] = tool
+            print(self.tools)
+        
         
     
 class STDIOMCPClient(BaseMCPClient):
@@ -44,92 +52,54 @@ class STDIOMCPClient(BaseMCPClient):
         full_command = [self.command] + self.args
 
         try:
-            # start the subprocess, set up stdin, stdout, stderr pipes
-            process = await asyncio.create_subprocess_exec(
-                *full_command,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=self.wkdir
-            )
-            
-            # set class variable to process
-            self.process = process
-        
-            # ensure pipes set properly
-            if not self.process.stderr:
-                raise RuntimeError("Subprocess stderr not available.")
-            if not self.process.stdout:
-                raise RuntimeError("Subprocess stdout not available.")
+            self.process = Process(command=full_command, wkdir=self.wkdir)
+            await self.process.start()
             
             # clear initial buffers
-            while True:
-                try:
-                    await asyncio.wait_for(self.process.stderr.readline(), timeout=0.2)
-                except TimeoutError:
-                    break
-            while True:
-                try:
-                    await asyncio.wait_for(self.process.stdout.readline(), timeout=0.2)
-                except TimeoutError:
-                    break
+            await self.process.read_startup_notifications()
                 
-            print("Subprocess started with PID:", process.pid)
-            return process
+            print("Subprocess started with PID:", self.process.pid)
         
         except Exception as e:
             raise RuntimeError(f"Failed to start subprocess: {e}")
     
     async def _kill_process(self)->int:
         # define return code
-        ret_code = -1
+        ret = -1
         try:
-            # if process is available, terminate it
-            if self.process:
-                self.process.terminate()
-                ret_code = await self.process.wait()
-                print(f"Subprocess with PID {self.process.pid} terminated with return code {ret_code}.")
-            else:
-                raise RuntimeError("No subprocess to terminate.")
-        # if no process, show
+            ret = await self.process.terminate()
+        
+        # no process?
         except RuntimeError as re:
             print(re)
+        # error terminating
         except Exception as e:
             print(f"Error terminating subprocess: {e}")
             
         # return return code or -1 if error
-        return ret_code
+        return ret
     
     async def initialize_connection(self) -> dict:
         try:
             # init the subprocess, check all connections and buffers
             await self._sub_process()
-            if not self.process or not self.process.stdin:
-                raise RuntimeError("Subprocess not initialized or stdin not available.")
-            if not self.process.stdout:
-                raise RuntimeError("Subprocess stdout not available.")
-            
-            # write the init message to stdin and clean buffer
-            message = json.dumps(INIT_PAYLOAD) + "\n"
-            self.process.stdin.write(message.encode())
-            await self.process.stdin.drain()
-            
-            # ensure stdin is open
-            if self.process.stdin.is_closing():
-                raise RuntimeError("Subprocess stdin is closed.")
+            if not self.process or not self.process.is_running():
+                raise RuntimeError("Subprocess not initialized or not running.")
 
-            # receive the init response, send acknowledgement notification, start continuous read loop
-            response_line = await asyncio.wait_for(self.process.stdout.readline(), timeout=2.0)   
-            response = ""
-            if response_line:
-                response = response_line.decode().strip()
-                print("Received response:", response)  
+            # write the init message to stdin using Process method
+            message = json.dumps(INIT_PAYLOAD)
+            await self.process.write_stdin(message)
+
+            # receive the init response using Process method
+            response = await self.process.read_stdout(timeout=2.0)
+            if response:
+                print("Received response:", response)
             await self.send_notification("notifications/initialized", {"status": "ready"})
             asyncio.create_task(self._continuous_read())
             self.current_id+=1
 
             # return the init response for debug purposes
-            return json.loads(response)
+            return json.loads(response) if response else {}
         
         # any exceptions caught and returned as error message, process killed
         # TODO: exponential backoff and retry logic
@@ -140,26 +110,21 @@ class STDIOMCPClient(BaseMCPClient):
     async def send_request(self, payload: dict) -> dict:
         try:
             # check process status
-            if not self.process or not self.process.stdin:
-                raise RuntimeError("Subprocess not initialized or stdin not available.")
-            
-            # get the current id and set id of the payload, increment id in synchronous part of func, dump into json, write, drain buffer
+            if not self.process or not self.process.is_running():
+                raise RuntimeError("Subprocess not initialized or not running.")
+
+            # get the current id and set id of the payload, increment id in synchronous part of func
             curr_id = self.current_id
             self.current_id += 1
             request_payload = payload.copy()
             request_payload["id"] = curr_id
-            request = json.dumps(payload) + "\n"
-            self.process.stdin.write(request.encode())
-            await self.process.stdin.drain()
-            
-            # ensure stdin is still open
-            if self.process.stdin.is_closing():
-                raise RuntimeError("Subprocess stdin is closed.")
-            
+            request = json.dumps(request_payload)
+            await self.process.write_stdin(request)
+
             # if all is well, create a future to receive the response and wait for it with timeout
             self.waiting_requests[curr_id] = asyncio.Future()
             response = await asyncio.wait_for(self.waiting_requests[curr_id], timeout = 10.0)
-            
+
             # remove request from memory
             del self.waiting_requests[curr_id]
         
@@ -182,15 +147,14 @@ class STDIOMCPClient(BaseMCPClient):
             "method": method,
             "params": params
         }
-        
+
         try:
-            # check process status, write notification to stdin, drain buffer
-            if not self.process or not self.process.stdin:
-                    raise RuntimeError("Subprocess not initialized or stdin not available.")
-            message = json.dumps(notification) + "\n"
-            self.process.stdin.write(message.encode())
-            await self.process.stdin.drain()
-        
+            # check process status, write notification using Process method
+            if not self.process or not self.process.is_running():
+                    raise RuntimeError("Subprocess not initialized or not running.")
+            message = json.dumps(notification)
+            await self.process.write_stdin(message)
+
         except Exception as e:
             print(f"Failed to send notification: {e}. Please try again.")
 
@@ -198,33 +162,37 @@ class STDIOMCPClient(BaseMCPClient):
     async def get_tools(self) -> dict:
         # make request for a given set of tools
         response = await self.send_request(TOOLS_PAYLOAD)
+        if "result" in response and "tools" in response["result"]:
+            self._set_tools(response["result"]["tools"])
+        else:
+            print("No tools found in response or error occurred:", response)
         return response
 
     async def _continuous_read(self):
-        # check validity of 
-        if not self.process or not self.process.stdout:
-            raise RuntimeError("Subprocess not initialized or stdout not available.")
+        # check validity of process
+        if not self.process or not self.process.is_running():
+            raise RuntimeError("Subprocess not initialized or not running.")
         try:
             # set continuous read loop
             while True:
-                response_line = await self.process.stdout.readline()
-                
-                # if no response line, subprocess has closed stdout, raise error
-                if not response_line:
+                # read response using Process method (non-blocking)
+                response = await self.process.read_stdout_nowait()
+
+                # if no response, subprocess has closed stdout, raise error
+                if not response:
                     raise RuntimeError("Subprocess stdout closed unexpectedly.")
-                
-                # read response and decode into a dict
-                response = response_line.decode().strip()
+
+                # parse response into a dict
                 print("Received response:", response)
                 return_response = json.loads(response)
-                
+
                 # if a response, resolve associated request future
                 if "id" in return_response and return_response["id"] in self.waiting_requests:
                     print("Response Received for ID:", return_response["id"])
                     future = self.waiting_requests[return_response["id"]]
                     if not future.done():
                         future.set_result(return_response)
-                
+
                 # TODO: future notification handling
                 else:
                     print("Notification Received:", response)
