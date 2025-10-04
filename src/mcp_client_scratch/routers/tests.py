@@ -5,6 +5,7 @@ from ..utils.constants import SERVER_URLS
 from ..classes.MCPClient import STDIOMCPClient
 from ..utils.make_llm_request import AI_request
 from ..schemas.requests import ChatRequest
+from ..utils.parse_responses import parse_tool_arguments, parse_response_for_jrpc
 
 router = APIRouter(prefix="/tests", tags=["tests"])
 
@@ -37,7 +38,11 @@ async def reinit_stdio_client(stdio_client: STDIOMCPClient = Depends(get_stdio_c
 async def make_stdio_request(request: ChatRequest, stdio_client: STDIOMCPClient = Depends(get_stdio_client)):
     try:
         response = AI_request(stdio_client, request.message)
-        return response
+        if "jsonrpc" not in response:
+            res = await parse_tool_arguments(response)
+            return {"type": "FUNC", "details": res}
+        res = await stdio_client.send_request(await parse_response_for_jrpc(response))
+        return {"type": "MCP", "details": res}
     except Exception as e:
         return {"error": str(e)}
 

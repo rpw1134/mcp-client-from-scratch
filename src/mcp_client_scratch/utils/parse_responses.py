@@ -20,3 +20,15 @@ async def parse_sse(response: httpx.Response) -> dict:
                 print("Received non-JSON data:", data)
                 continue
     return json.loads("{error: 'No valid JSON-RPC message received'}")
+
+async def parse_tool_arguments(response: dict)-> list:
+    ret_list = []
+    print("PARSING ARGS")
+    if "params" in response and "arguments" in response["params"]:
+        for value in response["params"]["arguments"].values():
+            ret_list.append(value)
+    return ret_list
+
+async def parse_response_for_jrpc(response: dict) -> dict:
+    del response["source"]
+    return response
