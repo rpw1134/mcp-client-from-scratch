@@ -18,9 +18,11 @@ app = FastAPI(title="MCP Client: Scratch", version="1.0.0")
 app.include_router(tests.router)
 
 @app.get("/")
-async def root():
+async def root() -> dict[str, str]:
+    """Root endpoint returning a welcome message."""
     return {"message": "Welcome to the MCP Client: Scratch API"}
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, str]:
+    """Health check endpoint."""
     return {"status": "healthy", "service": "mcp-client"}

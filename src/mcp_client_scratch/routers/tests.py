@@ -10,15 +10,18 @@ from ..utils.parse_responses import parse_tool_arguments, parse_response_for_jrp
 router = APIRouter(prefix="/tests", tags=["tests"])
 
 @router.get("/health")
-async def health_check():
+async def health_check() -> dict[str, str]:
+    """Health check endpoint for tests router."""
     return {"status": "healthy", "service": "mcp-client-stdios-tests"}
 
 @router.post("/init-stdio")
-async def init_stdio_client(stdio_client: STDIOMCPClient = Depends(get_stdio_client)):
+async def init_stdio_client(stdio_client: STDIOMCPClient = Depends(get_stdio_client)) -> dict[str, str]:
+    """Initialize the STDIO client."""
     return {"message": "Stdio client initialized"}
     
 @router.get("/get-tools-stdio")
-async def get_tools_stdio(stdio_client: STDIOMCPClient = Depends(get_stdio_client)):
+async def get_tools_stdio(stdio_client: STDIOMCPClient = Depends(get_stdio_client)) -> dict:
+    """Retrieve available tools from the STDIO client."""
     try:
         tools_response = await stdio_client.get_tools()
         return tools_response
@@ -26,7 +29,8 @@ async def get_tools_stdio(stdio_client: STDIOMCPClient = Depends(get_stdio_clien
         return {"error": str(e)}
     
 @router.post("/reinit-stdio")
-async def reinit_stdio_client(stdio_client: STDIOMCPClient = Depends(get_stdio_client)):
+async def reinit_stdio_client(stdio_client: STDIOMCPClient = Depends(get_stdio_client)) -> dict[str, str]:
+    """Re-initialize the STDIO client."""
     try:
         reset_stdio_client()
         new_stdio_client = await get_stdio_client()
@@ -35,7 +39,8 @@ async def reinit_stdio_client(stdio_client: STDIOMCPClient = Depends(get_stdio_c
         return {"error": str(e)}
     
 @router.post("/request")
-async def make_stdio_request(request: ChatRequest, stdio_client: STDIOMCPClient = Depends(get_stdio_client)):
+async def make_stdio_request(request: ChatRequest, stdio_client: STDIOMCPClient = Depends(get_stdio_client)) -> dict:
+    """Make an AI request and route it to the appropriate handler (native tool or MCP server)."""
     try:
         response = AI_request(stdio_client, request.message)
         if "jsonrpc" not in response:

@@ -2,6 +2,14 @@ import json
 import httpx
 
 async def parse_sse(response: httpx.Response) -> dict:
+    """Parse Server-Sent Events (SSE) stream for JSON-RPC messages.
+
+    Args:
+        response: The HTTP response with SSE stream
+
+    Returns:
+        The first valid JSON-RPC message found, or an error dictionary
+    """
     async for line in response.aiter_lines():
         if line.strip() == "":
             continue
@@ -21,7 +29,15 @@ async def parse_sse(response: httpx.Response) -> dict:
                 continue
     return json.loads("{error: 'No valid JSON-RPC message received'}")
 
-async def parse_tool_arguments(response: dict)-> list:
+async def parse_tool_arguments(response: dict) -> list:
+    """Extract tool arguments from a response dictionary.
+
+    Args:
+        response: The response dictionary containing params and arguments
+
+    Returns:
+        List of argument values
+    """
     ret_list = []
     print("PARSING ARGS")
     if "params" in response and "arguments" in response["params"]:
@@ -30,5 +46,13 @@ async def parse_tool_arguments(response: dict)-> list:
     return ret_list
 
 async def parse_response_for_jrpc(response: dict) -> dict:
+    """Remove the source field from a response dictionary for JSON-RPC compatibility.
+
+    Args:
+        response: The response dictionary
+
+    Returns:
+        Response dictionary without the source field
+    """
     del response["source"]
     return response

@@ -18,6 +18,7 @@ INIT_PAYLOAD = {
         }
     }
 
+
 TOOLS_PAYLOAD = {
         "jsonrpc": "2.0",
         "id": 2,
