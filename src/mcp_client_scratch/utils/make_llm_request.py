@@ -1,11 +1,15 @@
 import os
 from openai import OpenAI
+from openai.types.chat import ChatCompletionMessageParam
 import json
 from collections import OrderedDict
 from .constants import SYSTEM_PROMPT_BASE, EXECUTE_PAYLOAD_TEMPLATE
 from ..classes.MCPClient import STDIOMCPClient
+from ..classes.SessionStore import SessionStore
+from ..schemas.session import ModelMessage
+from typing import cast
 
-def AI_request(client: STDIOMCPClient, message: str) -> dict:
+def AI_request(client: STDIOMCPClient, session_store: SessionStore, session_id: str, message: str) -> dict:
     """Make an AI request to determine which tool to use.
 
     Args:
@@ -23,12 +27,23 @@ def AI_request(client: STDIOMCPClient, message: str) -> dict:
         if not key:
             raise ValueError("OPEN_AI_API_KEY environment variable not set.")
         openai = OpenAI(api_key=key)
+        current_messages: list[ChatCompletionMessageParam] = [
+            cast(ChatCompletionMessageParam, {"role": m.role, "content": m.content})
+            for m in session_store.get_session_messages(session_id)
+        ]
+
+        session_store.post_message(session_id, ModelMessage(role="user", content=message))
         response = openai.chat.completions.create(
             model="gpt-5-nano",
-            messages=[{"role": "system", "content": _get_system_prompt(client)}, {"role": "user", "content": message}, ],
+            messages=[
+                {"role": "system", "content": _get_system_prompt(client)},
+                *current_messages,
+                {"role": "user", "content": message}
+            ],
             max_completion_tokens=10000,
         )
         res = response.choices[0].message.content or ""
+        session_store.post_message(session_id, ModelMessage(role="assistant", content=res))
     except Exception as e:
         res = f"Error during AI request: {e}"
     return _response_to_dict(res)

@@ -1,11 +1,13 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import Optional
+from contextlib import asynccontextmanager
 import os
 import dotenv
 from .utils.make_llm_request import AI_request
 from .utils.constants import SERVER_URLS
 from .classes.MCPClient import HTTPMCPClient, STDIOMCPClient
+from .classes.SessionStore import SessionStore
 from .routers import tests
 from .schemas.requests import MCPRequest, ChatRequest
 from .schemas.responses import MCPResponse
@@ -13,8 +15,17 @@ from .schemas.responses import MCPResponse
 # Load environment variables from .env file
 dotenv.load_dotenv()
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    yield
+    # Shutdown
+    session_store = SessionStore()
+    session_store.redis_client.flushdb()
+    session_store.close()
+
 # Create FastAPI app instance
-app = FastAPI(title="MCP Client: Scratch", version="1.0.0")
+app = FastAPI(title="MCP Client: Scratch", version="1.0.0", lifespan=lifespan)
 app.include_router(tests.router)
 
 @app.get("/")
@@ -26,3 +37,4 @@ async def root() -> dict[str, str]:
 async def health_check() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "healthy", "service": "mcp-client"}
+
