@@ -14,6 +14,7 @@ class BaseMCPClient(ABC):
         self.current_id: int = 1
         self.waiting_requests: dict[int, asyncio.Future] = {}
         self.tools: dict = {**BASE_TOOLS}
+        self.name = ""
     
     @abstractmethod
     async def initialize_connection(self) -> dict:
@@ -54,7 +55,7 @@ class BaseMCPClient(ABC):
 class STDIOMCPClient(BaseMCPClient):
     """MCP client for STDIO-based server communication."""
 
-    def __init__(self, command: str, args: list[str], wkdir: str = "./", env: dict = {}) -> None:
+    def __init__(self, name:str, command: str, args: list[str], wkdir: str = "./", env: dict = {}) -> None:
         """Initialize the STDIO MCP client.
 
         Args:
@@ -66,6 +67,7 @@ class STDIOMCPClient(BaseMCPClient):
         self.args = args
         self.wkdir = wkdir
         self.env = env
+        self.name = name
         super().__init__()
     
     async def _sub_process(self) -> None:
@@ -247,13 +249,14 @@ class STDIOMCPClient(BaseMCPClient):
 class HTTPMCPClient(BaseMCPClient):
     """MCP client for HTTP-based server communication."""
 
-    def __init__(self, url: str) -> None:
+    def __init__(self, name:str,  url: str) -> None:
         """Initialize the HTTP MCP client.
 
         Args:
             url: The HTTP URL of the MCP server
         """
         self.url = url
+        self.name = name
         super().__init__()
     
     async def initialize_connection(self) -> dict:

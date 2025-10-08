@@ -3,7 +3,7 @@ from .constants import SERVER_URLS
 import redis
 
 
-async def initialize_stdio_client(command: str, args: list[str], wkdir: str = "./") -> STDIOMCPClient:
+async def initialize_stdio_client(name, command: str, args: list[str], wkdir: str = "./") -> STDIOMCPClient:
     """Initialize a STDIO MCP client.
 
     Args:
@@ -14,7 +14,7 @@ async def initialize_stdio_client(command: str, args: list[str], wkdir: str = ".
     Returns:
         Initialized STDIO MCP client
     """
-    stdio_client = STDIOMCPClient(command, args, wkdir)
+    stdio_client = STDIOMCPClient(name, command, args, wkdir)
     await stdio_client.initialize_connection()
     return stdio_client
 
@@ -25,7 +25,7 @@ async def initialize_test_stdio_client() -> STDIOMCPClient:
         Initialized test STDIO MCP client
     """
     stdio_test_args = SERVER_URLS['local_everything_server_stdio']
-    test_stdio_client = await initialize_stdio_client(stdio_test_args[0], stdio_test_args[1], stdio_test_args[2] if len(stdio_test_args) > 2 else "./")
+    test_stdio_client = await initialize_stdio_client("everything", stdio_test_args[0], stdio_test_args[1], stdio_test_args[2] if len(stdio_test_args) > 2 else "./")
     return test_stdio_client
 
 def initialize_redis_client() -> redis.Redis:

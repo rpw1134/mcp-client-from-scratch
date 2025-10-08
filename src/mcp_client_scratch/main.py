@@ -35,7 +35,29 @@ async def lifespan(app: FastAPI):
     print("✓ Redis connected:", app_state.redis_client.ping())
     print("✓ SessionStore initialized")
     print("✓ ServerConfig loaded")
-
+    
+    servers = app_state.server_config.get_all_servers()
+    clients = []
+    for name, cfg in servers.items():
+        print(name, cfg)
+        # Build kwargs dynamically, only including non-None values
+        client_kwargs = {
+            "name": name,
+            "command": cfg["command"], 
+            "args": cfg["args"]
+        }
+        
+        # Add optional parameters only if they exist and are not None
+        if cfg.get("env") is not None:
+            client_kwargs["env"] = cfg["env"]
+        if cfg.get("wkdir") is not None:
+            client_kwargs["wkdir"] = cfg["wkdir"]
+            
+        client = STDIOMCPClient(**client_kwargs)
+        await client.initialize_connection()
+        clients.append(client)
+    
+    print([client.name for client in clients])
     yield
 
     # Shutdown: Cleanup
