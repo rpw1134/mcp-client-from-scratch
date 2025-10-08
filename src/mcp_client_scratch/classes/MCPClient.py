@@ -54,7 +54,7 @@ class BaseMCPClient(ABC):
 class STDIOMCPClient(BaseMCPClient):
     """MCP client for STDIO-based server communication."""
 
-    def __init__(self, command: str, args: list[str], wkdir: str = "./") -> None:
+    def __init__(self, command: str, args: list[str], wkdir: str = "./", env: dict = {}) -> None:
         """Initialize the STDIO MCP client.
 
         Args:
@@ -65,6 +65,7 @@ class STDIOMCPClient(BaseMCPClient):
         self.command = command
         self.args = args
         self.wkdir = wkdir
+        self.env = env
         super().__init__()
     
     async def _sub_process(self) -> None:
@@ -76,7 +77,7 @@ class STDIOMCPClient(BaseMCPClient):
         full_command = [self.command] + self.args
 
         try:
-            self.process = Process(command=full_command, wkdir=self.wkdir)
+            self.process = Process(command=full_command, wkdir=self.wkdir, env=self.env)
             await self.process.start()
 
             await self.process.read_startup_notifications()

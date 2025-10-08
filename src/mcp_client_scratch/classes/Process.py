@@ -4,7 +4,7 @@ from typing import Optional
 class Process():
     """Manages an asyncio subprocess for STDIO-based MCP communication."""
 
-    def __init__(self, command: list[str], wkdir: str = "") -> None:
+    def __init__(self, command: list[str], wkdir: str = "", env : dict= {}) -> None:
         """Initialize the Process.
 
         Args:
@@ -15,6 +15,8 @@ class Process():
         self.wkdir = wkdir
         self.process: Optional[asyncio.subprocess.Process] = None
         self.pid: int = -1
+        self.env = env if env else None
+        
         
     async def start(self) -> None:
         """Start the subprocess with STDIO pipes."""
@@ -24,6 +26,7 @@ class Process():
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=self.wkdir
+            , env=self.env if self.env else None
         )
         if not self.process:
             raise RuntimeError("Failed to start process")

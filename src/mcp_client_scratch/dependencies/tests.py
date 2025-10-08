@@ -3,6 +3,7 @@ from ..utils.initialize_logic import initialize_test_stdio_client
 from fastapi import HTTPException
 from ..classes.SessionStore import SessionStore
 from typing import Generator
+from ..utils.initialize_logic import initialize_redis_client
 
 class StdioClientManager:
     """Singleton manager for a testable STDIO client instance."""
@@ -43,7 +44,8 @@ def get_session_store() -> Generator[SessionStore, None, None]:
     """Dependency function to get the session store instance."""
     session_store: Optional[SessionStore] = None
     try:
-        session_store = SessionStore()
+        redis_client = initialize_redis_client()
+        session_store = SessionStore(redis_client=redis_client)
         yield session_store
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to connect to Redis: {str(e)}")

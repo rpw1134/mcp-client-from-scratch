@@ -6,17 +6,17 @@ from typing import List
 class SessionStore():
     """Session store class to manage sessions using Redis."""
     
-    def __init__(self):
+    def __init__(self, redis_client: redis.Redis):
         """Initialize the Redis connection."""
-        pool = redis.ConnectionPool(host='localhost', port=6379, db=0, decode_responses=False)
-        self.redis_client = redis.Redis(connection_pool=pool, decode_responses=False)
+        self.redis_client = redis_client
     
     def create_session(self)-> str:
         """Create a new session with the given session ID."""
         session_id = uuid4().hex
-        res = self.redis_client.expire(session_id, 3600)
-        if not res:
-            raise Exception("Failed to create session in Redis.")
+        # Create an empty list for the session with expiration
+        self.redis_client.lpush(session_id, "")  # Push empty placeholder
+        self.redis_client.lpop(session_id)  # Remove it (key now exists but empty)
+        self.redis_client.expire(session_id, 3600)
         return session_id
     
     def get_session_messages(self, session_id: str) -> List[ModelMessage]:
