@@ -11,8 +11,8 @@ from .utils.make_llm_request import AI_request
 from .utils.constants import SERVER_URLS
 from .classes.MCPClient import HTTPMCPClient, STDIOMCPClient
 from .classes.SessionStore import SessionStore
-from .classes.ServerConfig import ServerConfig
-from .routers import tests
+from .classes.ClientManager import ClientManager
+from .routers import tests, application
 from .schemas.requests import MCPRequest, ChatRequest
 from .schemas.responses import MCPResponse
 from .utils.initialize_logic import initialize_redis_client
@@ -28,52 +28,42 @@ async def lifespan(app: FastAPI):
     app_state.redis_client = initialize_redis_client()
     app_state.session_store = SessionStore(redis_client=app_state.redis_client)
 
-    # Load server config from file
+    # Load server config from file and initialize client manager
     config_path = Path(__file__).parent / "server_config.json"
     with open(config_path) as f:
         config_data = json.load(f)
-    app_state.server_config = ServerConfig(config_data, app_state.redis_client)
+    app_state.client_manager = ClientManager(config_data, app_state.redis_client)
 
-    logger.info("✓ Redis connected:", app_state.redis_client.ping())
+    logger.info(f"✓ Redis connected: {app_state.redis_client.ping()}")
     logger.info("✓ SessionStore initialized")
-    logger.info("✓ ServerConfig loaded")
-    
-    servers = app_state.server_config.get_all_servers()
-    clients = []
-    for name, cfg in servers.items():
-        logger.info(f"Initializing client: {name}")
-        logger.info(f"Config: {cfg}")
-        try:
-            client = STDIOMCPClient(
-                name=name,
-                command=cfg["command"],
-                args=cfg["args"],
-                wkdir=cfg.get("wkdir", "./"),
-                env=cfg.get("env", {})
-            )
-            await client.initialize_connection()
-            await client.get_tools()
-            clients.append(client)
-            logger.info(f"✓ Client {name} initialized successfully")
-            
-        except Exception as e:
-            logger.error(f"✗ Failed to initialize client {name}: {e}")
+    logger.info("✓ ClientManager loaded")
 
-    logger.info(f"Total clients initialized: {[client.name for client in clients]}")
+    # Initialize all clients eagerly
+    await app_state.client_manager.initialize_clients()
+
+    # Log client status
+    running = app_state.client_manager.get_running_clients()
+    failed = app_state.client_manager.get_failed_clients()
+    logger.info(f"✓ Clients running: {list(running.keys())}")
+    if failed:
+        logger.warning(f"✗ Clients failed: {list(failed.keys())}")
     yield
 
     # Shutdown: Cleanup
+    if app_state.client_manager:
+        await app_state.client_manager.cleanup_clients()
     if app_state.redis_client:
         app_state.redis_client.flushdb()  # For testing
         app_state.redis_client.close()
     app_state.redis_client = None
     app_state.session_store = None
-    app_state.server_config = None
-    print("✓ Cleanup complete")
+    app_state.client_manager = None
+    logger.info("✓ Cleanup complete")
 
 # Create FastAPI app instance
 app = FastAPI(title="MCP Client: Scratch", version="1.0.0", lifespan=lifespan)
 app.include_router(tests.router)
+app.include_router(application.router)
 
 @app.get("/")
 async def root() -> dict[str, str]:

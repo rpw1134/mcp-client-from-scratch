@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from ..dependencies.tests import get_stdio_client, reset_stdio_client
-from ..dependencies.connections import get_session_store, get_server_config
+from ..dependencies.connections import get_session_store, get_client_manager
 from ..utils.constants import SERVER_URLS
 from ..classes.MCPClient import STDIOMCPClient
 from ..classes.SessionStore import SessionStore
-from ..classes.ServerConfig import ServerConfig
+from ..classes.ClientManager import ClientManager
 from ..schemas.session import ModelMessage
 from ..utils.make_llm_request import AI_request
 from ..schemas.requests import ChatRequest

@@ -3,7 +3,7 @@
 from typing import Optional
 from redis import Redis
 from ..classes.SessionStore import SessionStore
-from ..classes.ServerConfig import ServerConfig
+from ..classes.ClientManager import ClientManager
 
 
 class AppState:
@@ -11,7 +11,7 @@ class AppState:
 
     redis_client: Optional[Redis] = None
     session_store: Optional[SessionStore] = None
-    server_config: Optional[ServerConfig] = None
+    client_manager: Optional[ClientManager] = None
 
 
 # Module-level singleton instance
@@ -46,15 +46,15 @@ async def get_session_store() -> SessionStore:
     return app_state.session_store
 
 
-async def get_server_config() -> ServerConfig:
-    """Dependency to get ServerConfig singleton.
+async def get_client_manager() -> ClientManager:
+    """Dependency to get ClientManager singleton.
 
     Returns:
-        ServerConfig instance
+        ClientManager instance
 
     Raises:
-        RuntimeError: If ServerConfig not initialized
+        RuntimeError: If ClientManager not initialized
     """
-    if app_state.server_config is None:
-        raise RuntimeError("ServerConfig not initialized. Ensure lifespan startup completed.")
-    return app_state.server_config
+    if app_state.client_manager is None:
+        raise RuntimeError("ClientManager not initialized. Ensure lifespan startup completed.")
+    return app_state.client_manager
