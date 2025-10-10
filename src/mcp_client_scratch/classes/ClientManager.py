@@ -211,6 +211,14 @@ class ClientManager:
             for name, client in self._clients.items()
             if isinstance(client, Exception)
         }
+        
+    def get_clients(self) -> Dict[str, Union[BaseMCPClient, Exception]]:
+        """Get all clients (running and failed).
+
+        Returns:
+            Dictionary mapping server names to client instances or errors
+        """
+        return self._clients.copy()
 
     def get_client_status(self) -> Dict[str, dict]:
         """Get status of all clients (running and failed).
