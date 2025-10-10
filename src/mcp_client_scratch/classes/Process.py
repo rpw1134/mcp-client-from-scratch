@@ -1,4 +1,5 @@
 import asyncio
+import os
 from typing import Optional
 
 class Process():
@@ -20,13 +21,19 @@ class Process():
         
     async def start(self) -> None:
         """Start the subprocess with STDIO pipes."""
+        # Merge custom env vars with parent environment
+        merged_env = None
+        if self.env:
+            merged_env = os.environ.copy()
+            merged_env.update(self.env)
+
         self.process = await asyncio.create_subprocess_exec(
             *self.command,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=self.wkdir
-            , env=self.env if self.env else None
+            cwd=self.wkdir if self.wkdir else None,
+            env=merged_env
         )
         if not self.process:
             raise RuntimeError("Failed to start process")

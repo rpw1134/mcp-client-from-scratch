@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import os
 import dotenv
 import json
+import logging
 from pathlib import Path
 from .utils.make_llm_request import AI_request
 from .utils.constants import SERVER_URLS
@@ -19,6 +20,7 @@ from .dependencies.connections import app_state
 
 # Load environment variables from .env file
 dotenv.load_dotenv()
+logger = logging.getLogger("uvicorn.error")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,32 +34,32 @@ async def lifespan(app: FastAPI):
         config_data = json.load(f)
     app_state.server_config = ServerConfig(config_data, app_state.redis_client)
 
-    print("✓ Redis connected:", app_state.redis_client.ping())
-    print("✓ SessionStore initialized")
-    print("✓ ServerConfig loaded")
+    logger.info("✓ Redis connected:", app_state.redis_client.ping())
+    logger.info("✓ SessionStore initialized")
+    logger.info("✓ ServerConfig loaded")
     
     servers = app_state.server_config.get_all_servers()
     clients = []
     for name, cfg in servers.items():
-        print(name, cfg)
-        # Build kwargs dynamically, only including non-None values
-        client_kwargs = {
-            "name": name,
-            "command": cfg["command"], 
-            "args": cfg["args"]
-        }
-        
-        # Add optional parameters only if they exist and are not None
-        if cfg.get("env") is not None:
-            client_kwargs["env"] = cfg["env"]
-        if cfg.get("wkdir") is not None:
-            client_kwargs["wkdir"] = cfg["wkdir"]
+        logger.info(f"Initializing client: {name}")
+        logger.info(f"Config: {cfg}")
+        try:
+            client = STDIOMCPClient(
+                name=name,
+                command=cfg["command"],
+                args=cfg["args"],
+                wkdir=cfg.get("wkdir", "./"),
+                env=cfg.get("env", {})
+            )
+            await client.initialize_connection()
+            await client.get_tools()
+            clients.append(client)
+            logger.info(f"✓ Client {name} initialized successfully")
             
-        client = STDIOMCPClient(**client_kwargs)
-        await client.initialize_connection()
-        clients.append(client)
-    
-    print([client.name for client in clients])
+        except Exception as e:
+            logger.error(f"✗ Failed to initialize client {name}: {e}")
+
+    logger.info(f"Total clients initialized: {[client.name for client in clients]}")
     yield
 
     # Shutdown: Cleanup

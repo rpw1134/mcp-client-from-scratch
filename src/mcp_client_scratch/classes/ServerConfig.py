@@ -1,5 +1,7 @@
 from typing import Dict, List, Optional
 import json
+import os
+import re
 from redis import Redis
 from typing import cast
 
@@ -65,8 +67,48 @@ class ServerConfig:
         """
         self.redis_client.set(self.DYNAMIC_SERVERS_KEY, json.dumps(dynamic_servers))
 
+    def _resolve_env_vars(self, config: dict) -> dict:
+        """Resolve environment variable placeholders in server config.
+
+        Supports ${ENV_VAR} and ${input:name} syntax.
+        ${input:name} is treated as ${NAME} (uppercase).
+
+        Args:
+            config: Server configuration dict
+
+        Returns:
+            Config with resolved environment variables
+        """
+        resolved_config = config.copy()
+
+        def resolve_string(value: str) -> str:
+            """Resolve env vars in a string."""
+            # Replace ${input:name} with ${NAME}
+            value = re.sub(r'\$\{input:(\w+)\}', lambda m: f"${{{m.group(1).upper()}}}", value)
+            # Replace ${ENV_VAR} with actual env var value
+            value = re.sub(r'\$\{(\w+)\}', lambda m: os.getenv(m.group(1), ''), value)
+            return value
+
+        # Resolve env vars in the args list
+        if "args" in resolved_config and isinstance(resolved_config["args"], list):
+            resolved_config["args"] = [
+                resolve_string(arg) if isinstance(arg, str) else arg
+                for arg in resolved_config["args"]
+            ]
+
+        # Resolve env vars in the env dict
+        if "env" in resolved_config and isinstance(resolved_config["env"], dict):
+            resolved_env = {}
+            for key, value in resolved_config["env"].items():
+                if isinstance(value, str):
+                    value = resolve_string(value)
+                resolved_env[key] = value
+            resolved_config["env"] = resolved_env
+
+        return resolved_config
+
     def get_server(self, name: str) -> Optional[dict]:
-        """Get configuration for a specific server.
+        """Get configuration for a specific server with resolved env vars.
 
         Args:
             name: Server name
@@ -74,15 +116,21 @@ class ServerConfig:
         Returns:
             Server configuration dict or None if not found
         """
-        return self._servers.get(name)
+        config = self._servers.get(name)
+        if config:
+            return self._resolve_env_vars(config)
+        return None
 
     def get_all_servers(self) -> Dict[str, dict]:
-        """Get all server configurations (static + dynamic).
+        """Get all server configurations (static + dynamic) with resolved env vars.
 
         Returns:
             Dictionary of all server configurations
         """
-        return self._servers.copy()
+        resolved_servers = {}
+        for name, config in self._servers.items():
+            resolved_servers[name] = self._resolve_env_vars(config)
+        return resolved_servers
 
     def add_server(self, name: str, config: dict) -> None:
         """Add a dynamic server configuration.

@@ -63,12 +63,12 @@ class STDIOMCPClient(BaseMCPClient):
             args: Arguments for the command
             wkdir: Working directory for the subprocess
         """
+        super().__init__()
         self.command = command
         self.args = args
         self.wkdir = wkdir
         self.env = env
         self.name = name
-        super().__init__()
     
     async def _sub_process(self) -> None:
         """Start the subprocess and clear initial buffers.
@@ -79,6 +79,9 @@ class STDIOMCPClient(BaseMCPClient):
         full_command = [self.command] + self.args
 
         try:
+            print(f"Starting subprocess: {' '.join(full_command)}")
+            print(f"Working directory: {self.wkdir}")
+            print(f"Environment vars: {self.env}")
             self.process = Process(command=full_command, wkdir=self.wkdir, env=self.env)
             await self.process.start()
 
@@ -87,6 +90,9 @@ class STDIOMCPClient(BaseMCPClient):
             print("Subprocess started with PID:", self.process.pid)
 
         except Exception as e:
+            print(f"ERROR in _sub_process: {e}")
+            import traceback
+            traceback.print_exc()
             raise RuntimeError(f"Failed to start subprocess: {e}")
     
     async def _kill_process(self) -> int:
