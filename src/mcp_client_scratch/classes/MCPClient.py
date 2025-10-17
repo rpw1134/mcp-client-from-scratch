@@ -286,11 +286,10 @@ class HTTPMCPClient(BaseMCPClient):
                         case "text/event-stream":
                             print("SSE stream detected. Parsing...")
                             message = await parse_sse(response)
-                            return message
                         case "application/json":
                             print("JSON response detected. Parsing...")
                             json_response = await response.json()
-                            return json_response
+                            message = json_response
                         case _:
                             return {"error": f"Unexpected Content-Type: {content_type}"}
 
