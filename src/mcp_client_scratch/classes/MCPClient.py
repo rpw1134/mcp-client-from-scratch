@@ -1,10 +1,11 @@
 from ..utils.constants import INIT_HEADERS, INIT_PAYLOAD, TOOLS_PAYLOAD, BASE_TOOLS
-from ..utils.parse_responses import parse_sse
+from ..utils.parse_responses import parse_sse, poll_sse
 import json
 import asyncio
 import httpx
 from abc import ABC, abstractmethod
 from .Process import Process
+from typing import Optional
 
 class BaseMCPClient(ABC):
     """Abstract base class for MCP client implementations."""
@@ -263,6 +264,8 @@ class HTTPMCPClient(BaseMCPClient):
         """
         self.url = url
         self.name = name
+        self.httpx_client: Optional[httpx.AsyncClient] = None
+        self.notification_stream: Optional[httpx.Response] = None
         super().__init__()
     
     async def initialize_connection(self) -> dict:
@@ -285,8 +288,9 @@ class HTTPMCPClient(BaseMCPClient):
                         # if server uses SSE for streaming responses, open notifaction channel and return the initialization response
                         case "text/event-stream":
                             print("SSE stream detected. Parsing...")
-                            await asyncio.create_task(self._continuous_read())
                             message = await parse_sse(response)
+                            self.notification_stream = response
+                            await asyncio.create_task(self._continuous_read())
                             await self.send_notification("notifications/initialized", {"status": "ready"})
                         # otherwise, expect a normal JSON response for initialization
                         case "application/json":
@@ -313,8 +317,15 @@ class HTTPMCPClient(BaseMCPClient):
 
     async def _continuous_read(self) -> None:
         """Continuous read for HTTP client (not yet implemented)."""
-        pass
-    
+        try:
+            if not self.notification_stream:
+                raise RuntimeError("Notification stream not initialized. Closing server connection.")
+            await poll_sse(self.notification_stream)
+        except RuntimeError as re:
+            print(f"Error: {re}")
+        except Exception as e:
+            print(f"Error in continuous read: {e}")
+        
     async def send_notification(self, method: str, params: dict = {}) -> None:
         """Send a JSON-RPC notification to the MCP server.
 

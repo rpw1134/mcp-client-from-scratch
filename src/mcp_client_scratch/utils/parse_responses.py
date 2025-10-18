@@ -20,7 +20,7 @@ async def parse_sse(response: httpx.Response) -> dict:
             try:
                 message = json.loads(data)
                 if "jsonrpc" in message and "id" in message:
-                    print("valid")
+                    print("Received valid JSON-RPC message:", message)
                     return message
                 else:
                     print("Received non-JSON-RPC message:", message)
@@ -28,6 +28,36 @@ async def parse_sse(response: httpx.Response) -> dict:
                 print("Received non-JSON data:", data)
                 continue
     return json.loads("{error: 'No valid JSON-RPC message received'}")
+
+async def poll_sse(response: httpx.Response) -> None:
+    """Poll Server-Sent Events (SSE) stream for JSON-RPC messages. Specifically for notifications.
+
+    Args:
+        response: The HTTP response with SSE stream
+
+    Returns:
+        None
+    """
+    try:
+        async for line in response.aiter_lines():
+            if line.strip() == "":
+                continue
+            if line.startswith("data:"):
+                data = line[len("data:"):].strip()
+                try:
+                    message = json.loads(data)
+                    if "jsonrpc" in message and "method" in message:
+                        print("Received valid JSON-RPC message:", message)
+                    else:
+                        print("Received non-JSON-RPC message:", message)
+                except json.JSONDecodeError:
+                    print("Received non-JSON data:", data)
+                    continue
+        raise RuntimeError("SSE stream closed")
+    except Exception as e:
+        print(f"Error while polling SSE or stream closed on one end: {e}")
+
+
 
 async def parse_tool_arguments(response: dict) -> list:
     """Extract tool arguments from a response dictionary.
