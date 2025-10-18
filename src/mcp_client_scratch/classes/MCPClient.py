@@ -275,25 +275,28 @@ class HTTPMCPClient(BaseMCPClient):
             TODO: Add connection pooling
             TODO: Handle streamed JSON
         """
-        async with httpx.AsyncClient(headers=INIT_HEADERS) as client:
+        self.httpx_client = httpx.AsyncClient(headers=INIT_HEADERS)
+        async with self.httpx_client as client:
             try:
                 async with client.stream("POST", self.url, json=INIT_PAYLOAD) as response:
-                    headers = response.headers
-                    content_type = headers.get("Content-Type", "")
-                    message = {}
+                    content_type = response.headers.get("Content-Type", "")
 
                     match content_type:
+                        # if server uses SSE for streaming responses, open notifaction channel and return the initialization response
                         case "text/event-stream":
                             print("SSE stream detected. Parsing...")
+                            await asyncio.create_task(self._continuous_read())
                             message = await parse_sse(response)
+                            await self.send_notification("notifications/initialized", {"status": "ready"})
+                        # otherwise, expect a normal JSON response for initialization
                         case "application/json":
                             print("JSON response detected. Parsing...")
-                            json_response = await response.json()
-                            message = json_response
+                            message = await response.json()
+                            await self.send_notification("notifications/initialized", {"status": "ready"})
                         case _:
                             return {"error": f"Unexpected Content-Type: {content_type}"}
 
-                return {"error": "Stream closed before a valid JSON-RPC message was received."}
+                return message
 
             except httpx.RequestError as e:
                 return {"error": f"Request Error: {e}"}
@@ -311,4 +314,29 @@ class HTTPMCPClient(BaseMCPClient):
     async def _continuous_read(self) -> None:
         """Continuous read for HTTP client (not yet implemented)."""
         pass
+    
+    async def send_notification(self, method: str, params: dict = {}) -> None:
+        """Send a JSON-RPC notification to the MCP server.
+
+        Args:
+            method: The notification method
+            params: The notification parameters
+        """
+        notification = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params
+        }
+
+        try:
+            if not self.httpx_client:
+                raise RuntimeError("HTTP connection not initialized.")
+            async with self.httpx_client as client:
+                async with client.stream("POST", self.url, data=notification) as response:
+                    if response.status_code != 200:
+                        print(f"Notification failed with status code: {response.status_code}")
+                        
+
+        except Exception as e:
+            print(f"Failed to send notification: {e}. Please try again.")
         
