@@ -42,7 +42,6 @@ async def poll_sse(response: httpx.Response, pending_requests: dict[int, asyncio
         async for line in response.aiter_lines():
             if line.strip() == "":
                 continue
-            print("YES")
             if line.startswith("data:"):
                 data = line[len("data:"):].strip()
                 try:
