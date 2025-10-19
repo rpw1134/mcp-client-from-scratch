@@ -1,7 +1,8 @@
 import json
 import httpx
+import asyncio
 
-async def parse_sse(response: httpx.Response) -> dict:
+async def parse_init_sse(response: httpx.Response) -> dict:
     """Parse Server-Sent Events (SSE) stream for JSON-RPC messages.
 
     Args:
@@ -13,10 +14,8 @@ async def parse_sse(response: httpx.Response) -> dict:
     async for line in response.aiter_lines():
         if line.strip() == "":
             continue
-        print("RAW LINE:", line)
         if line.startswith("data:"):
             data = line[len("data:"):].strip()
-            print("DATA:", data)
             try:
                 message = json.loads(data)
                 if "jsonrpc" in message and "id" in message:
@@ -29,7 +28,7 @@ async def parse_sse(response: httpx.Response) -> dict:
                 continue
     return json.loads("{error: 'No valid JSON-RPC message received'}")
 
-async def poll_sse(response: httpx.Response) -> None:
+async def poll_sse(response: httpx.Response, pending_requests: dict[int, asyncio.Future]) -> None:
     """Poll Server-Sent Events (SSE) stream for JSON-RPC messages. Specifically for notifications.
 
     Args:
@@ -39,15 +38,19 @@ async def poll_sse(response: httpx.Response) -> None:
         None
     """
     try:
+        print("NOTIFICATIONS POLLING STARTED")
         async for line in response.aiter_lines():
             if line.strip() == "":
                 continue
+            print("YES")
             if line.startswith("data:"):
                 data = line[len("data:"):].strip()
                 try:
                     message = json.loads(data)
-                    if "jsonrpc" in message and "method" in message:
+                    if "jsonrpc" in message:
                         print("Received valid JSON-RPC message:", message)
+                        if "id" in message and message["id"] in pending_requests:
+                            pending_requests[message["id"]].set_result(message)
                     else:
                         print("Received non-JSON-RPC message:", message)
                 except json.JSONDecodeError:

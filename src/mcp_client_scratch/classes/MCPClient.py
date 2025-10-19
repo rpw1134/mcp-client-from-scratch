@@ -1,5 +1,5 @@
 from ..utils.constants import INIT_HEADERS, INIT_PAYLOAD, TOOLS_PAYLOAD, BASE_TOOLS
-from ..utils.parse_responses import parse_sse, poll_sse
+from ..utils.parse_responses import parse_init_sse, poll_sse
 import json
 import asyncio
 import httpx
@@ -96,7 +96,7 @@ class STDIOMCPClient(BaseMCPClient):
             traceback.print_exc()
             raise RuntimeError(f"Failed to start subprocess: {e}")
     
-    async def _kill_process(self) -> int:
+    async def kill_process(self) -> int:
         """Terminate the subprocess.
 
         Returns:
@@ -140,7 +140,7 @@ class STDIOMCPClient(BaseMCPClient):
             return json.loads(response) if response else {}
 
         except Exception as e:
-            await self._kill_process()
+            await self.kill_process()
             return {"error": f"Failed to send initialization message: {e}"}
         
     async def send_request(self, payload: dict) -> dict:
@@ -172,7 +172,7 @@ class STDIOMCPClient(BaseMCPClient):
             del self.waiting_requests[curr_id]
 
         except RuntimeError as e:
-            await self._kill_process()
+            await self.kill_process()
             response = {"error": f"Runtime error: {e}"}
         except TimeoutError as e:
             response = {"error": f"The request timed out. Try again. Error: {e}"}
@@ -246,12 +246,12 @@ class STDIOMCPClient(BaseMCPClient):
 
         except RuntimeError as re:
             print(f"Runtime error in continuous read: {re}")
-            await self._kill_process()
+            await self.kill_process()
         except json.JSONDecodeError as e:
             print(f"Invalid JSON received")
         except Exception as e:
             print(f"Error in continuous read: {e}")
-            await self._kill_process()
+            await self.kill_process()
     
 class HTTPMCPClient(BaseMCPClient):
     """MCP client for HTTP-based server communication."""
@@ -266,6 +266,9 @@ class HTTPMCPClient(BaseMCPClient):
         self.name = name
         self.httpx_client: Optional[httpx.AsyncClient] = None
         self.notification_stream: Optional[httpx.Response] = None
+        self.pending_requests: dict[int, asyncio.Future] = {}
+        self.current_id = 1
+        self.mcp_session_id = ""
         super().__init__()
     
     async def initialize_connection(self) -> dict:
@@ -278,34 +281,39 @@ class HTTPMCPClient(BaseMCPClient):
             TODO: Add connection pooling
             TODO: Handle streamed JSON
         """
-        self.httpx_client = httpx.AsyncClient(headers=INIT_HEADERS)
-        async with self.httpx_client as client:
-            try:
-                async with client.stream("POST", self.url, json=INIT_PAYLOAD) as response:
-                    content_type = response.headers.get("Content-Type", "")
+        client = self.httpx_client = httpx.AsyncClient(headers=INIT_HEADERS, timeout=httpx.Timeout(10.0, read=None))
+        try:
+            response = await client.stream("POST", self.url, json=INIT_PAYLOAD).__aenter__()
+            content_type = response.headers.get("Content-Type", "")
+            self.mcp_session_id = response.headers.get("Mcp-Session-Id")
+            self.current_id += 1
 
-                    match content_type:
-                        # if server uses SSE for streaming responses, open notifaction channel and return the initialization response
-                        case "text/event-stream":
-                            print("SSE stream detected. Parsing...")
-                            message = await parse_sse(response)
-                            self.notification_stream = response
-                            await asyncio.create_task(self._continuous_read())
-                            await self.send_notification("notifications/initialized", {"status": "ready"})
-                        # otherwise, expect a normal JSON response for initialization
-                        case "application/json":
-                            print("JSON response detected. Parsing...")
-                            message = await response.json()
-                            await self.send_notification("notifications/initialized", {"status": "ready"})
-                        case _:
-                            return {"error": f"Unexpected Content-Type: {content_type}"}
+            match content_type:
+                # if server uses SSE for streaming responses, open notifaction channel and return the initialization response
+                case "text/event-stream":
+                    print("SSE stream detected. Parsing...")
+                    res = await parse_init_sse(response)
+                    if "id" not in res:
+                        raise RuntimeError("No valid JSON-RPC message received during initialization.")
+                    message = res
+                    print("session id:", self.mcp_session_id)
+                    await self.send_notification("notifications/initialized", {"status": "ready"})
+                    asyncio.create_task(self._continuous_read())
+                    
+                # otherwise, expect a normal JSON response for initialization
+                case "application/json":
+                    print("JSON response detected. Parsing...")
+                    message = await response.json()
+                    await self.send_notification("notifications/initialized", {"status": "ready"})
+                case _:
+                    return {"error": f"Unexpected Content-Type: {content_type}"}
+            print("ret")
+            return message
 
-                return message
-
-            except httpx.RequestError as e:
-                return {"error": f"Request Error: {e}"}
-            except Exception as e:
-                return {"error": f"Unexpected error: {e}"}
+        except httpx.RequestError as e:
+            return {"error": f"Request Error: {e}"}
+        except Exception as e:
+            return {"error": f"Unexpected error: {e}"}
     
     async def send_request(self, payload: dict) -> dict:
         """Send a request to the HTTP MCP server (not yet implemented)."""
@@ -318,9 +326,14 @@ class HTTPMCPClient(BaseMCPClient):
     async def _continuous_read(self) -> None:
         """Continuous read for HTTP client (not yet implemented)."""
         try:
-            if not self.notification_stream:
-                raise RuntimeError("Notification stream not initialized. Closing server connection.")
-            await poll_sse(self.notification_stream)
+            if not self.httpx_client:
+                raise RuntimeError("HTTP connection not initialized.")
+            async with self.httpx_client.stream("GET", self.url, headers={"Mcp-Session-Id":self.mcp_session_id}) as response:
+                self.notification_stream = response
+                if not self.notification_stream:
+                    raise RuntimeError("Notification stream not initialized. Closing server connection.")
+                print("Starting continuous read for notifications...")
+                await poll_sse(self.notification_stream, self.pending_requests)
         except RuntimeError as re:
             print(f"Error: {re}")
         except Exception as e:
@@ -336,18 +349,26 @@ class HTTPMCPClient(BaseMCPClient):
         notification = {
             "jsonrpc": "2.0",
             "method": method,
-            "params": params
+            "params": params,
         }
 
         try:
             if not self.httpx_client:
                 raise RuntimeError("HTTP connection not initialized.")
-            async with self.httpx_client as client:
-                async with client.stream("POST", self.url, data=notification) as response:
-                    if response.status_code != 200:
-                        print(f"Notification failed with status code: {response.status_code}")
+            response = await self.httpx_client.post(self.url, json=notification, headers={"Mcp-Session-Id":self.mcp_session_id})
+            if response.status_code != 201:
+                print(f"Notification failed with status code: {response.status_code}")
                         
-
         except Exception as e:
             print(f"Failed to send notification: {e}. Please try again.")
+        print("Notification sent!")
+    
+    async def close_connection(self) -> None:
+        try:
+            if self.notification_stream:
+                await self.notification_stream.aclose()
+            if self.httpx_client:
+                await self.httpx_client.aclose()
+        except Exception as e:
+            print(f"Error closing HTTP connection: {e}")
         

@@ -252,8 +252,11 @@ class ClientManager:
             if isinstance(client, BaseMCPClient):
                 try:
                     if isinstance(client, STDIOMCPClient):
-                        await client._kill_process()
+                        await client.kill_process()
                         logger.info(f"✓ Client {name} terminated")
+                    if isinstance(client, HTTPMCPClient):
+                        await client.close_connection()
+                        logger.info(f"✓ Client {name} HTTP connection closed")
                 except Exception as e:
                     logger.error(f"✗ Failed to cleanup client {name}: {e}")
 
@@ -385,7 +388,7 @@ class ClientManager:
             client = self._clients[name]
             if isinstance(client, STDIOMCPClient):
                 try:
-                    await client._kill_process()
+                    await client.kill_process()
                 except Exception as e:
                     logger.error(f"Error cleaning up client {name}: {e}")
             del self._clients[name]
