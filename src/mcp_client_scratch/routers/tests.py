@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from ..dependencies.tests import get_stdio_client, reset_stdio_client
+from ..dependencies.tests import get_stdio_client, reset_stdio_client, get_http_client, reset_http_client
 from ..dependencies.connections import get_session_store, get_client_manager
 from ..utils.constants import SERVER_URLS
-from ..classes.MCPClient import STDIOMCPClient
+from ..classes.MCPClient import STDIOMCPClient, HTTPMCPClient
 from ..classes.SessionStore import SessionStore
 from ..classes.ClientManager import ClientManager
 from ..schemas.session import ModelMessage
@@ -77,5 +77,43 @@ async def chat(session_id: str, request: ChatRequest, stdio_client: STDIOMCPClie
     except Exception as e:
         return {"error": str(e)}
 
+# HTTP Client Test Routes
+
+@router.post("/http-client")
+async def init_http_client(http_client: HTTPMCPClient = Depends(get_http_client)) -> dict[str, str]:
+    """Initialize the HTTP client."""
+    return {"message": "HTTP client initialized", "session_id": http_client.mcp_session_id}
+
+@router.get("/http-client/tools")
+async def get_http_tools(http_client: HTTPMCPClient = Depends(get_http_client)) -> dict:
+    """Retrieve available tools from the HTTP client."""
+    try:
+        tools_response = await http_client.get_tools()
+        return tools_response
+    except Exception as e:
+        return {"error": str(e)}
+
+@router.put("/http-client")
+async def reinit_http_client() -> dict[str, str]:
+    """Re-initialize the HTTP client."""
+    try:
+        await reset_http_client()
+        new_http_client = await get_http_client()
+        return {"message": "HTTP client re-initialized", "session_id": new_http_client.mcp_session_id}
+    except Exception as e:
+        return {"error": str(e)}
+
+@router.post("/http-client/sessions/{session_id}/chat")
+async def http_chat(session_id: str, request: ChatRequest, http_client: HTTPMCPClient = Depends(get_http_client), session_store: SessionStore = Depends(get_session_store)) -> dict:
+    """Make an AI request using HTTP client and route it to the appropriate handler (native tool or MCP server)."""
+    try:
+        response = AI_request(http_client, session_store, session_id, request.message)
+        if "jsonrpc" not in response:
+            res = await parse_tool_arguments(response)
+            return {"type": "FUNC", "details": res}
+        res = await http_client.send_request(await parse_response_for_jrpc(response))
+        return {"type": "MCP", "details": res}
+    except Exception as e:
+        return {"error": str(e)}
 
 

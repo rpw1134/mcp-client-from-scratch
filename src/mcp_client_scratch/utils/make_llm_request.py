@@ -4,12 +4,12 @@ from openai.types.chat import ChatCompletionMessageParam
 import json
 from collections import OrderedDict
 from .constants import SYSTEM_PROMPT_BASE, EXECUTE_PAYLOAD_TEMPLATE
-from ..classes.MCPClient import STDIOMCPClient
+from ..classes.MCPClient import BaseMCPClient
 from ..classes.SessionStore import SessionStore
 from ..schemas.session import ModelMessage
 from typing import cast
 
-def AI_request(client: STDIOMCPClient, session_store: SessionStore, session_id: str, message: str) -> dict:
+def AI_request(client: BaseMCPClient, session_store: SessionStore, session_id: str, message: str) -> dict:
     """Make an AI request to determine which tool to use.
 
     Args:
@@ -48,7 +48,7 @@ def AI_request(client: STDIOMCPClient, session_store: SessionStore, session_id: 
         res = f"Error during AI request: {e}"
     return _response_to_dict(res)
 
-def _get_system_prompt(client: STDIOMCPClient) -> str:
+def _get_system_prompt(client: BaseMCPClient) -> str:
     """Generate the system prompt with available tools.
 
     Args:
