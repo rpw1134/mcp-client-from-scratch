@@ -2,7 +2,7 @@ import json
 import httpx
 import asyncio
 
-async def parse_init_sse(response: httpx.Response) -> dict:
+async def parse_sse(response: httpx.Response) -> dict:
     """Parse Server-Sent Events (SSE) stream for JSON-RPC messages.
 
     Args:
@@ -58,6 +58,40 @@ async def poll_sse(response: httpx.Response, pending_requests: dict[int, asyncio
         raise RuntimeError("SSE stream closed")
     except Exception as e:
         print(f"Error while polling SSE or stream closed on one end: {e}")
+        
+async def parse_batched_sse(response: httpx.Response) -> list:
+    """Parse Server-Sent Events (SSE) stream for batched JSON-RPC messages.
+
+    Args:
+        response: The HTTP response with SSE stream
+    Returns:
+        List of JSON-RPC messages found
+    """
+    messages = []
+    try:
+        async for line in response.aiter_lines():
+            if line.strip()=="":
+                continue
+            if line.startswith("data:"):
+                data = line[len("data:"):].strip()
+                try:
+                    res = json.loads(data)
+                    if isinstance(res, list):
+                        messages.extend(res)
+                        print(f"Received batched JSON-RPC messages: {res}")
+                    elif "jsonrpc" in res:
+                        messages.append(res)
+                        print(f"Received valid JSON-RPC message: {res}")
+                    else:
+                        print(f"Received non-JSON-RPC message: {res}")
+                except json.JSONDecodeError:
+                    print("Received non-JSON data:", data)
+                    continue
+    except Exception as e:
+        print(e)
+    finally:
+        return messages
+        
 
 
 

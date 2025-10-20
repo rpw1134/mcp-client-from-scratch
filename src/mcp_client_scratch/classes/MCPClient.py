@@ -1,11 +1,11 @@
 from ..utils.constants import INIT_HEADERS, INIT_PAYLOAD, TOOLS_PAYLOAD, BASE_TOOLS
-from ..utils.parse_responses import parse_init_sse, poll_sse
+from ..utils.parse_responses import parse_sse, poll_sse, parse_batched_sse
 import json
 import asyncio
 import httpx
 from abc import ABC, abstractmethod
 from .Process import Process
-from typing import Optional
+from typing import Optional, Union
 
 class BaseMCPClient(ABC):
     """Abstract base class for MCP client implementations."""
@@ -292,7 +292,7 @@ class HTTPMCPClient(BaseMCPClient):
                 # if server uses SSE for streaming responses, open notifaction channel and return the initialization response
                 case "text/event-stream":
                     print("SSE stream detected. Parsing...")
-                    res = await parse_init_sse(response)
+                    res = await parse_sse(response)
                     if "id" not in res:
                         raise RuntimeError("No valid JSON-RPC message received during initialization.")
                     message = res
@@ -316,12 +316,36 @@ class HTTPMCPClient(BaseMCPClient):
             return {"error": f"Unexpected error: {e}"}
     
     async def send_request(self, payload: dict) -> dict:
-        """Send a request to the HTTP MCP server (not yet implemented)."""
+        try:
+            if not self.httpx_client:
+                raise RuntimeError("HTTP connection not initialized.")
+            curr_id = self.current_id
+            self.current_id += 1
+            payload["id"] = curr_id
+            async with self.httpx_client.stream("POST", self.url, json=payload, headers={"Mcp-Session-Id":self.mcp_session_id}) as response:
+                content_type = response.headers.get("Content-Type", "")
+                match content_type:
+                    case "application/json":
+                        print("JSON response detected. Parsing...")
+                        return await response.json()
+                    case "text/event-stream":
+                        print("SSE stream detected. Parsing...")
+                        return await parse_sse(response)
+                    case _:
+                        raise RuntimeError(f"Unexpected Content-Type: {content_type}")
+        except RuntimeError as re:
+            return {"error": f"Runtime error: {re}"}
         return {}
 
     async def get_tools(self) -> dict:
         """Retrieve tools from the HTTP MCP server (not yet implemented)."""
-        return {}
+        payload = TOOLS_PAYLOAD.copy()
+        response = await self.send_request(payload)
+        if "result" in response and "tools" in response["result"]:
+            self._set_tools(response["result"]["tools"])
+        else:
+            print("No tools found in response or error occurred:", response)
+        return self.tools
 
     async def _continuous_read(self) -> None:
         """Continuous read for HTTP client (not yet implemented)."""
