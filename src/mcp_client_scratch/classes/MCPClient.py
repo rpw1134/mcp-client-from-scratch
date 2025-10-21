@@ -3,9 +3,12 @@ from ..utils.parse_responses import parse_sse, poll_sse, parse_batched_sse
 import json
 import asyncio
 import httpx
+import logging
 from abc import ABC, abstractmethod
 from .Process import Process
 from typing import Optional, Union
+
+logger = logging.getLogger("uvicorn.error")
 
 class BaseMCPClient(ABC):
     """Abstract base class for MCP client implementations."""
@@ -80,20 +83,12 @@ class STDIOMCPClient(BaseMCPClient):
         full_command = [self.command] + self.args
 
         try:
-            print(f"Starting subprocess: {' '.join(full_command)}")
-            print(f"Working directory: {self.wkdir}")
-            print(f"Environment vars: {self.env}")
             self.process = Process(command=full_command, wkdir=self.wkdir, env=self.env)
             await self.process.start()
-
             await self.process.read_startup_notifications()
 
-            print("Subprocess started with PID:", self.process.pid)
-
         except Exception as e:
-            print(f"ERROR in _sub_process: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Failed to start subprocess: {e}", exc_info=True)
             raise RuntimeError(f"Failed to start subprocess: {e}")
     
     async def kill_process(self) -> int:
@@ -102,16 +97,11 @@ class STDIOMCPClient(BaseMCPClient):
         Returns:
             Return code of the terminated process, or -1 if error
         """
-        ret = -1
         try:
-            ret = await self.process.terminate()
-
-        except RuntimeError as re:
-            print(re)
+            return await self.process.terminate()
         except Exception as e:
-            print(f"Error terminating subprocess: {e}")
-
-        return ret
+            logger.error(f"Error terminating subprocess: {e}")
+            return -1
     
     async def initialize_connection(self) -> dict:
         """Initialize connection to the STDIO MCP server.
@@ -131,8 +121,6 @@ class STDIOMCPClient(BaseMCPClient):
             await self.process.write_stdin(message)
 
             response = await self.process.read_stdout(timeout=2.0)
-            if response:
-                print("Received response:", response)
             await self.send_notification("notifications/initialized", {"status": "ready"})
             asyncio.create_task(self._continuous_read())
             self.current_id += 1
@@ -202,7 +190,7 @@ class STDIOMCPClient(BaseMCPClient):
             await self.process.write_stdin(message)
 
         except Exception as e:
-            print(f"Failed to send notification: {e}. Please try again.")
+            logger.warning(f"Failed to send notification: {e}")
 
     
     async def get_tools(self) -> dict:
@@ -215,7 +203,7 @@ class STDIOMCPClient(BaseMCPClient):
         if "result" in response and "tools" in response["result"]:
             self._set_tools(response["result"]["tools"])
         else:
-            print("No tools found in response or error occurred:", response)
+            logger.warning(f"No tools found in response or error occurred: {response}")
         return self.tools
 
     async def _continuous_read(self) -> None:
@@ -232,25 +220,21 @@ class STDIOMCPClient(BaseMCPClient):
                 response = await self.process.read_stdout_nowait()
 
                 if not response:
-                    raise RuntimeError("Subprocess stdout closed unexpectedly.")
+                    break
 
                 return_response = json.loads(response)
 
                 if "id" in return_response and return_response["id"] in self.waiting_requests:
-                    print("Response Received for ID:", return_response["id"])
                     future = self.waiting_requests[return_response["id"]]
                     if not future.done():
                         future.set_result(return_response)
                 else:
-                    print("Notification Received:", response)
+                    logger.debug(f"Notification: {return_response}")
 
-        except RuntimeError as re:
-            print(f"Runtime error in continuous read: {re}")
-            await self.kill_process()
         except json.JSONDecodeError as e:
-            print(f"Invalid JSON received")
+            logger.error(f"Invalid JSON received in continuous read")
         except Exception as e:
-            print(f"Error in continuous read: {e}")
+            logger.error(f"Error in continuous read: {e}")
             await self.kill_process()
     
 class HTTPMCPClient(BaseMCPClient):
@@ -312,23 +296,19 @@ class HTTPMCPClient(BaseMCPClient):
             match content_type:
                 # if server uses SSE for streaming responses, open notifaction channel and return the initialization response
                 case "text/event-stream":
-                    print("SSE stream detected. Parsing...")
                     res = await parse_sse(response)
                     if "id" not in res:
                         raise RuntimeError("No valid JSON-RPC message received during initialization.")
                     message = res
-                    print("session id:", self.mcp_session_id)
                     await self.send_notification("notifications/initialized", {"status": "ready"})
                     asyncio.create_task(self._continuous_read())
-                    
+
                 # otherwise, expect a normal JSON response for initialization
                 case "application/json":
-                    print("JSON response detected. Parsing...")
                     message = await response.json()
                     await self.send_notification("notifications/initialized", {"status": "ready"})
                 case _:
                     return {"error": f"Unexpected Content-Type: {content_type}"}
-            print("ret")
             return message
 
         except httpx.RequestError as e:
@@ -347,10 +327,8 @@ class HTTPMCPClient(BaseMCPClient):
                 content_type = response.headers.get("Content-Type", "")
                 match content_type:
                     case "application/json":
-                        print("JSON response detected. Parsing...")
                         return await response.json()
                     case "text/event-stream":
-                        print("SSE stream detected. Parsing...")
                         return await parse_sse(response)
                     case _:
                         raise RuntimeError(f"Unexpected Content-Type: {content_type}")
@@ -359,14 +337,13 @@ class HTTPMCPClient(BaseMCPClient):
         return {}
 
     async def get_tools(self) -> dict:
-        """Retrieve tools from the HTTP MCP server (not yet implemented)."""
+        """Retrieve tools from the HTTP MCP server."""
         payload = TOOLS_PAYLOAD.copy()
         response = await self.send_request(payload)
-        print("TOOLS RESPONSE:", response)
         if "result" in response and "tools" in response["result"]:
             self._set_tools(response["result"]["tools"])
         else:
-            print("No tools found in response or error occurred:", response)
+            logger.warning(f"No tools found in response: {response}")
         return self.tools
 
     async def _continuous_read(self) -> None:
@@ -377,13 +354,12 @@ class HTTPMCPClient(BaseMCPClient):
             async with self.httpx_client.stream("GET", self.url, headers=self._build_headers()) as response:
                 self.notification_stream = response
                 if not self.notification_stream:
-                    raise RuntimeError("Notification stream not initialized. Closing server connection.")
-                print("Starting continuous read for notifications...")
+                    raise RuntimeError("Notification stream not initialized")
                 await poll_sse(self.notification_stream, self.waiting_requests)
         except RuntimeError as re:
-            print(f"Error: {re}")
+            logger.warning(f"HTTP continuous read closed: {re}")
         except Exception as e:
-            print(f"Error in continuous read: {e}")
+            logger.error(f"Error in HTTP continuous read: {e}")
         
     async def send_notification(self, method: str, params: dict = {}) -> None:
         """Send a JSON-RPC notification to the MCP server.
@@ -402,12 +378,11 @@ class HTTPMCPClient(BaseMCPClient):
             if not self.httpx_client:
                 raise RuntimeError("HTTP connection not initialized.")
             response = await self.httpx_client.post(self.url, json=notification, headers=self._build_headers())
-            if response.status_code != 201:
-                print(f"Notification failed with status code: {response.status_code}")
-                        
+            if response.status_code != 202:
+                logger.warning(f"Notification '{method}' failed: status {response.status_code}")
+
         except Exception as e:
-            print(f"Failed to send notification: {e}. Please try again.")
-        print("Notification sent!")
+            logger.warning(f"Failed to send notification '{method}': {e}")
     
     async def close_connection(self) -> None:
         try:
@@ -416,5 +391,5 @@ class HTTPMCPClient(BaseMCPClient):
             if self.httpx_client:
                 await self.httpx_client.aclose()
         except Exception as e:
-            print(f"Error closing HTTP connection: {e}")
+            logger.error(f"Error closing HTTP connection: {e}")
         

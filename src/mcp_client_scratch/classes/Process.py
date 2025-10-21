@@ -1,6 +1,9 @@
 import asyncio
 import os
+import logging
 from typing import Optional
+
+logger = logging.getLogger("uvicorn.error")
 
 class Process():
     """Manages an asyncio subprocess for STDIO-based MCP communication."""
@@ -129,20 +132,27 @@ class Process():
         """Terminate the subprocess.
 
         Returns:
-            The return code of the terminated process
-
-        Raises:
-            RuntimeError: If no subprocess exists to terminate
+            The return code of the terminated process, or -1 if already terminated
         """
         return_val = -1
-        if self.process:
-            self.process.terminate()
-            return_val = await self.process.wait()
-            print(f"Subprocess with PID {self.pid} terminated with return code {return_val}.")
+        try:
+            if self.process:
+                # Check if process is already terminated
+                if self.process.returncode is not None:
+                    return_val = self.process.returncode
+                    self.process = None
+                    self.pid = -1
+                    return return_val
+
+                self.process.terminate()
+                return_val = await self.process.wait()
+                self.process = None
+                self.pid = -1
+        except ProcessLookupError:
             self.process = None
             self.pid = -1
-        else:
-            raise RuntimeError("No subprocess to terminate.")
+        except Exception as e:
+            logger.error(f"Error terminating subprocess: {e}", exc_info=True)
         return return_val
     
         

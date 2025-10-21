@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from ..dependencies.connections import get_client_manager
+from ..dependencies.app_state import get_client_manager
 
 router = APIRouter(prefix="/servers", tags=["servers"])
 

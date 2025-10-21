@@ -5,6 +5,9 @@ from ..classes.SessionStore import SessionStore
 from typing import Generator
 from ..utils.initialize_logic import initialize_redis_client
 from ..classes.MCPClient import HTTPMCPClient, STDIOMCPClient
+import logging
+
+logger = logging.getLogger("uvicorn.error")
 class StdioClientManager:
     """Singleton manager for a testable STDIO client instance."""
 
@@ -63,7 +66,7 @@ class HttpClientManager:
                 if hasattr(cls._instance, 'close_connection'):
                     await cls._instance.close_connection()
             except Exception as e:
-                print(f"Error closing HTTP client: {e}")
+                logger.error(f"Error closing HTTP client: {e}")
         cls._instance = None
 
 async def get_stdio_client() -> STDIOMCPClient:

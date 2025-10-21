@@ -160,8 +160,8 @@ class ClientManager:
         Creates client instances for all configured servers and attempts to connect.
         Stores successful clients and error objects for failed connections.
         """
+        logger.info("Initializing MCP clients")
         for name, config in self._servers.items():
-            logger.info(f"Initializing client: {name}")
             try:
                 # Resolve env vars and create client
                 resolved_config = self._resolve_env_vars(config)
@@ -175,7 +175,6 @@ class ClientManager:
 
                 # Store successful client
                 self._clients[name] = client
-                logger.info(f"✓ Client {name} initialized successfully")
 
             except Exception as e:
                 # Store error for this client
@@ -261,10 +260,8 @@ class ClientManager:
                 try:
                     if isinstance(client, STDIOMCPClient):
                         await client.kill_process()
-                        logger.info(f"✓ Client {name} terminated")
                     if isinstance(client, HTTPMCPClient):
                         await client.close_connection()
-                        logger.info(f"✓ Client {name} HTTP connection closed")
                 except Exception as e:
                     logger.error(f"✗ Failed to cleanup client {name}: {e}")
 

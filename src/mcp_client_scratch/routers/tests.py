@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from ..dependencies.tests import get_stdio_client, reset_stdio_client, get_http_client, reset_http_client
-from ..dependencies.connections import get_session_store, get_client_manager
+from ..dependencies.app_state import get_session_store, get_client_manager
 from ..utils.constants import SERVER_URLS
 from ..classes.MCPClient import STDIOMCPClient, HTTPMCPClient
 from ..classes.SessionStore import SessionStore
