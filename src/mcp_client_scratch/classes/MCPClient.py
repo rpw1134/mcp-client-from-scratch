@@ -256,21 +256,42 @@ class STDIOMCPClient(BaseMCPClient):
 class HTTPMCPClient(BaseMCPClient):
     """MCP client for HTTP-based server communication."""
 
-    def __init__(self, name:str,  url: str) -> None:
+    def __init__(self, name:str,  url: str, headers: Optional[dict[str,str]] = None) -> None:
         """Initialize the HTTP MCP client.
 
         Args:
+            name: Name of the MCP server
             url: The HTTP URL of the MCP server
+            headers: Optional custom headers to include in requests
         """
-        self.url = url
+        super().__init__()
         self.name = name
+        self.url = url
         self.httpx_client: Optional[httpx.AsyncClient] = None
         self.notification_stream: Optional[httpx.Response] = None
-        self.pending_requests: dict[int, asyncio.Future] = {}
-        self.current_id = 1
-        self.mcp_session_id = ""
-        super().__init__()
-    
+        self.custom_headers = headers or {}
+        self.mcp_session_id: Optional[str] = None
+
+    def _build_headers(self, additional_headers: Optional[dict[str, str]] = None) -> dict[str, str]:
+        """Build request headers, including session ID if available.
+
+        Args:
+            additional_headers: Optional headers to merge
+
+        Returns:
+            Merged headers dict with no None values
+        """
+        headers = {**self.custom_headers}
+
+        if additional_headers:
+            headers.update(additional_headers)
+
+        # Add session ID only if it's set
+        if self.mcp_session_id:
+            headers["Mcp-Session-Id"] = self.mcp_session_id
+
+        return headers
+
     async def initialize_connection(self) -> dict:
         """Initialize connection to the HTTP MCP server.
 
@@ -281,7 +302,7 @@ class HTTPMCPClient(BaseMCPClient):
             TODO: Add connection pooling
             TODO: Handle streamed JSON
         """
-        client = self.httpx_client = httpx.AsyncClient(headers=INIT_HEADERS, timeout=httpx.Timeout(10.0, read=None))
+        client = self.httpx_client = httpx.AsyncClient(headers=self._build_headers(INIT_HEADERS), timeout=httpx.Timeout(10.0, read=None))
         try:
             response = await client.stream("POST", self.url, json=INIT_PAYLOAD).__aenter__()
             content_type = response.headers.get("Content-Type", "")
@@ -322,7 +343,7 @@ class HTTPMCPClient(BaseMCPClient):
             curr_id = self.current_id
             self.current_id += 1
             payload["id"] = curr_id
-            async with self.httpx_client.stream("POST", self.url, json=payload, headers={"Mcp-Session-Id":self.mcp_session_id}) as response:
+            async with self.httpx_client.stream("POST", self.url, json=payload, headers=self._build_headers()) as response:
                 content_type = response.headers.get("Content-Type", "")
                 match content_type:
                     case "application/json":
@@ -341,6 +362,7 @@ class HTTPMCPClient(BaseMCPClient):
         """Retrieve tools from the HTTP MCP server (not yet implemented)."""
         payload = TOOLS_PAYLOAD.copy()
         response = await self.send_request(payload)
+        print("TOOLS RESPONSE:", response)
         if "result" in response and "tools" in response["result"]:
             self._set_tools(response["result"]["tools"])
         else:
@@ -352,12 +374,12 @@ class HTTPMCPClient(BaseMCPClient):
         try:
             if not self.httpx_client:
                 raise RuntimeError("HTTP connection not initialized.")
-            async with self.httpx_client.stream("GET", self.url, headers={"Mcp-Session-Id":self.mcp_session_id}) as response:
+            async with self.httpx_client.stream("GET", self.url, headers=self._build_headers()) as response:
                 self.notification_stream = response
                 if not self.notification_stream:
                     raise RuntimeError("Notification stream not initialized. Closing server connection.")
                 print("Starting continuous read for notifications...")
-                await poll_sse(self.notification_stream, self.pending_requests)
+                await poll_sse(self.notification_stream, self.waiting_requests)
         except RuntimeError as re:
             print(f"Error: {re}")
         except Exception as e:
@@ -379,7 +401,7 @@ class HTTPMCPClient(BaseMCPClient):
         try:
             if not self.httpx_client:
                 raise RuntimeError("HTTP connection not initialized.")
-            response = await self.httpx_client.post(self.url, json=notification, headers={"Mcp-Session-Id":self.mcp_session_id})
+            response = await self.httpx_client.post(self.url, json=notification, headers=self._build_headers())
             if response.status_code != 201:
                 print(f"Notification failed with status code: {response.status_code}")
                         

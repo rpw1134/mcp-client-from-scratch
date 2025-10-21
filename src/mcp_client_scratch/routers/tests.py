@@ -82,7 +82,7 @@ async def chat(session_id: str, request: ChatRequest, stdio_client: STDIOMCPClie
 @router.post("/http-client")
 async def init_http_client(http_client: HTTPMCPClient = Depends(get_http_client)) -> dict[str, str]:
     """Initialize the HTTP client."""
-    return {"message": "HTTP client initialized", "session_id": http_client.mcp_session_id}
+    return {"message": "HTTP client initialized", "session_id": http_client.mcp_session_id if http_client.mcp_session_id else "no session id"}
 
 @router.get("/http-client/tools")
 async def get_http_tools(http_client: HTTPMCPClient = Depends(get_http_client)) -> dict:
@@ -99,7 +99,7 @@ async def reinit_http_client() -> dict[str, str]:
     try:
         await reset_http_client()
         new_http_client = await get_http_client()
-        return {"message": "HTTP client re-initialized", "session_id": new_http_client.mcp_session_id}
+        return {"message": "HTTP client re-initialized", "session_id": new_http_client.mcp_session_id if new_http_client.mcp_session_id else "no session id"}
     except Exception as e:
         return {"error": str(e)}
 

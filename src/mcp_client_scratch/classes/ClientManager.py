@@ -111,6 +111,14 @@ class ClientManager:
                     value = resolve_string(value)
                 resolved_env[key] = value
             resolved_config["env"] = resolved_env
+            
+        if "headers" in resolved_config and isinstance(resolved_config["headers"], dict):
+            resolved_headers = {}
+            for key, value in resolved_config["headers"].items():
+                if isinstance(value, str):
+                    value = resolve_string(value)
+                resolved_headers[key] = value
+            resolved_config["headers"] = resolved_headers
 
         return resolved_config
 
@@ -142,7 +150,7 @@ class ClientManager:
             )
         elif "url" in config:
             # HTTP client
-            return HTTPMCPClient(name=name, url=config["url"])
+            return HTTPMCPClient(name=name, url=config["url"], headers=config.get("headers", {}))
         else:
             raise ValueError(f"Server '{name}' must have either 'command' or 'url' field")
 
