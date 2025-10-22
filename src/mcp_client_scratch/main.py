@@ -7,7 +7,6 @@ import dotenv
 import json
 import logging
 from pathlib import Path
-from .utils.make_llm_request import AI_request
 from .utils.constants import SERVER_URLS
 from .classes.MCPClient import HTTPMCPClient, STDIOMCPClient
 from .classes.SessionStore import SessionStore

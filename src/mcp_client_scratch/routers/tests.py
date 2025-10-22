@@ -1,13 +1,17 @@
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
+from openai.types.chat import ChatCompletionMessageParam
+from typing import cast
+import json
+from collections import OrderedDict
 from ..dependencies.tests import get_stdio_client, reset_stdio_client, get_http_client, reset_http_client
-from ..dependencies.app_state import get_session_store, get_client_manager
-from ..utils.constants import SERVER_URLS
+from ..dependencies.app_state import get_session_store, get_client_manager, get_openai_client
+from ..utils.constants import SERVER_URLS, SYSTEM_PROMPT_BASE, EXECUTE_PAYLOAD_TEMPLATE
 from ..classes.MCPClient import STDIOMCPClient, HTTPMCPClient
 from ..classes.SessionStore import SessionStore
 from ..classes.ClientManager import ClientManager
+from ..classes.OpenAIClient import OpenAIClient
 from ..schemas.session import ModelMessage
-from ..utils.make_llm_request import AI_request
 from ..schemas.requests import ChatRequest
 from ..utils.parse_responses import parse_tool_arguments, parse_response_for_jrpc
 
@@ -65,14 +69,52 @@ async def get_messages(session_id: str, session_store: SessionStore = Depends(ge
     return session_store.get_session_messages(session_id)
     
 @router.post("/sessions/{session_id}/chat")
-async def chat(session_id: str, request: ChatRequest, stdio_client: STDIOMCPClient = Depends(get_stdio_client), session_store: SessionStore = Depends(get_session_store)) -> dict:
+async def chat(
+    session_id: str,
+    request: ChatRequest,
+    stdio_client: STDIOMCPClient = Depends(get_stdio_client),
+    session_store: SessionStore = Depends(get_session_store),
+    openai_client: OpenAIClient = Depends(get_openai_client)
+) -> dict:
     """Make an AI request and route it to the appropriate handler (native tool or MCP server)."""
     try:
-        response = AI_request(stdio_client, session_store, session_id, request.message)
-        if "jsonrpc" not in response:
-            res = await parse_tool_arguments(response)
+        # Get conversation history
+        current_messages: list[ChatCompletionMessageParam] = [
+            cast(ChatCompletionMessageParam, {"role": m.role, "content": m.content})
+            for m in session_store.get_session_messages(session_id)
+        ]
+
+        # Add user message to session
+        session_store.post_message(session_id, ModelMessage(role="user", content=request.message))
+
+        # Build messages with current user message
+        messages_with_user = [
+            *current_messages,
+            {"role": "user", "content": request.message}
+        ]
+
+        # Get system prompt with available tools
+        system_prompt = SYSTEM_PROMPT_BASE + str(stdio_client.tools)
+
+        # Make tool selection request
+        ai_response = await openai_client.tool_selection_request(
+            messages=messages_with_user,
+            system_prompt=system_prompt
+        )
+
+        # Store assistant response
+        session_store.post_message(session_id, ModelMessage(role="assistant", content=ai_response))
+
+        # Parse response
+        response_dict = json.loads(ai_response, object_pairs_hook=OrderedDict)
+        if "source" in response_dict and response_dict["source"] == "server":
+            response_dict |= EXECUTE_PAYLOAD_TEMPLATE.copy()
+
+        # Route to appropriate handler
+        if "jsonrpc" not in response_dict:
+            res = await parse_tool_arguments(response_dict)
             return {"type": "FUNC", "details": res}
-        res = await stdio_client.send_request(await parse_response_for_jrpc(response))
+        res = await stdio_client.send_request(await parse_response_for_jrpc(response_dict))
         return {"type": "MCP", "details": res}
     except Exception as e:
         return {"error": str(e)}
@@ -104,14 +146,52 @@ async def reinit_http_client() -> dict[str, str]:
         return {"error": str(e)}
 
 @router.post("/http-client/sessions/{session_id}/chat")
-async def http_chat(session_id: str, request: ChatRequest, http_client: HTTPMCPClient = Depends(get_http_client), session_store: SessionStore = Depends(get_session_store)) -> dict:
+async def http_chat(
+    session_id: str,
+    request: ChatRequest,
+    http_client: HTTPMCPClient = Depends(get_http_client),
+    session_store: SessionStore = Depends(get_session_store),
+    openai_client: OpenAIClient = Depends(get_openai_client)
+) -> dict:
     """Make an AI request using HTTP client and route it to the appropriate handler (native tool or MCP server)."""
     try:
-        response = AI_request(http_client, session_store, session_id, request.message)
-        if "jsonrpc" not in response:
-            res = await parse_tool_arguments(response)
+        # Get conversation history
+        current_messages: list[ChatCompletionMessageParam] = [
+            cast(ChatCompletionMessageParam, {"role": m.role, "content": m.content})
+            for m in session_store.get_session_messages(session_id)
+        ]
+
+        # Add user message to session
+        session_store.post_message(session_id, ModelMessage(role="user", content=request.message))
+
+        # Build messages with current user message
+        messages_with_user = [
+            *current_messages,
+            {"role": "user", "content": request.message}
+        ]
+
+        # Get system prompt with available tools
+        system_prompt = SYSTEM_PROMPT_BASE + str(http_client.tools)
+
+        # Make tool selection request
+        ai_response = await openai_client.tool_selection_request(
+            messages=messages_with_user,
+            system_prompt=system_prompt
+        )
+
+        # Store assistant response
+        session_store.post_message(session_id, ModelMessage(role="assistant", content=ai_response))
+
+        # Parse response
+        response_dict = json.loads(ai_response, object_pairs_hook=OrderedDict)
+        if "source" in response_dict and response_dict["source"] == "server":
+            response_dict |= EXECUTE_PAYLOAD_TEMPLATE.copy()
+
+        # Route to appropriate handler
+        if "jsonrpc" not in response_dict:
+            res = await parse_tool_arguments(response_dict)
             return {"type": "FUNC", "details": res}
-        res = await http_client.send_request(await parse_response_for_jrpc(response))
+        res = await http_client.send_request(await parse_response_for_jrpc(response_dict))
         return {"type": "MCP", "details": res}
     except Exception as e:
         return {"error": str(e)}

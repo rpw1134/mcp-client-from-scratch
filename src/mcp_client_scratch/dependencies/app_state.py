@@ -4,6 +4,7 @@ from typing import Optional
 from redis import Redis
 from ..classes.SessionStore import SessionStore
 from ..classes.ClientManager import ClientManager
+from ..classes.OpenAIClient import OpenAIClient
 from ..utils.initialize_logic import initialize_redis_client
 import json
 import logging
@@ -17,6 +18,7 @@ class AppState:
     redis_client: Optional[Redis] = None
     session_store: Optional[SessionStore] = None
     client_manager: Optional[ClientManager] = None
+    openai_client: Optional[OpenAIClient] = None
     
     def __init__(self):
         # Startup: Initialize singletons
@@ -53,12 +55,16 @@ class AppState:
         """Cleanup logic to release resources."""
         if self.client_manager:
             await self.client_manager.cleanup_clients()
+        if self.openai_client:
+            await self.openai_client.close()
+            logger.info("OpenAI client closed")
         if self.redis_client:
             self.redis_client.flushdb()  # For testing
             self.redis_client.close()
         self.redis_client = None
         self.session_store = None
         self.client_manager = None
+        self.openai_client = None
         logger.info("✓ Cleanup complete")
 
 
@@ -106,3 +112,20 @@ async def get_client_manager() -> ClientManager:
     if app_state.client_manager is None:
         raise RuntimeError("ClientManager not initialized. Ensure lifespan startup completed.")
     return app_state.client_manager
+
+
+async def get_openai_client() -> OpenAIClient:
+    """Dependency to get OpenAI client instance.
+
+    Lazily initializes the OpenAI client on first request if not already initialized.
+
+    Returns:
+        OpenAIClient instance
+
+    Raises:
+        ValueError: If OPEN_AI_API_KEY environment variable not set
+    """
+    if app_state.openai_client is None:
+        app_state.openai_client = OpenAIClient()
+        logger.info("OpenAI client initialized")
+    return app_state.openai_client
