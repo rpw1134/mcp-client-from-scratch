@@ -16,6 +16,7 @@ dependencies = [
     "httpx-sse (>=0.4.1,<0.5.0)",
     "redis (>=6.4.0,<7.0.0)",
     "uuid (>=1.30,<2.0)",
+    "chromadb (>=1.2.1,<2.0.0)",
 ]
 
 [tool.poetry.scripts]

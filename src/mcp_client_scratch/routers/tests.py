@@ -36,6 +36,48 @@ async def get_tools(stdio_client: STDIOMCPClient = Depends(get_stdio_client)) ->
     except Exception as e:
         return {"error": str(e)}
 
+@router.post("/stdio/tools/embeddings")
+async def batch_embed_tools(
+    stdio_client: STDIOMCPClient = Depends(get_stdio_client),
+    openai_client: OpenAIClient = Depends(get_openai_client)
+) -> dict:
+    """Batch embed all tools from the STDIO client into the vector store."""
+    try:
+        # Get tools from STDIO client
+        tools = stdio_client.tools
+        
+        if not tools:
+            return {"message": "No tools to embed", "count": 0}
+
+        # Batch embed the tools
+        await openai_client.batch_embed_tools(tools)
+
+        return {
+            "message": "Tools successfully embedded",
+            "count": len(tools),
+            "tool_names": [tool.get("name", "unnamed") for tool in tools.values()]
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+@router.get("/stdio/tools/embeddings")
+async def query_tools(
+    query: str = Query(..., description="Query string to search for similar tools"),
+    n_results: int = Query(default=10, description="Number of similar tools to return"),
+    openai_client: OpenAIClient = Depends(get_openai_client)
+) -> dict:
+    """Query for similar tools using semantic search."""
+    try:
+        similar_tools = await openai_client.query_similar_tools(query, n_results)
+
+        return {
+            "query": query,
+            "count": len(similar_tools),
+            "tools": similar_tools
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 @router.put("/stdio")
 async def reinit_stdio_client(stdio_client: STDIOMCPClient = Depends(get_stdio_client)) -> dict[str, str]:
     """Re-initialize the STDIO client."""

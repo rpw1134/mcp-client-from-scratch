@@ -17,7 +17,7 @@ class BaseMCPClient(ABC):
         """Initialize the base MCP client."""
         self.current_id: int = 1
         self.waiting_requests: dict[int, asyncio.Future] = {}
-        self.tools: dict = {**BASE_TOOLS}
+        self.tools: dict[str,dict] = {**BASE_TOOLS}
         self.name = ""
     
     @abstractmethod

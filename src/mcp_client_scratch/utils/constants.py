@@ -52,7 +52,7 @@ BASE_TOOLS = {
     "chat": {
         "name": "chat",
         "description": "Use this tool to answer general questions or have a conversation.",
-        "parameters": {
+        "inputSchema": {
             "type": "object",
             "properties": {
                 "message": {
@@ -60,7 +60,7 @@ BASE_TOOLS = {
                     "description": "The message to return to the user."}
             },
             "required": ["message"],
-             "additionalProperties": False
+            "additionalProperties": False
         },
         "source": "native"
     },
@@ -68,7 +68,7 @@ BASE_TOOLS = {
     {
         "name": "none",
         "description": "Use this tool when no action is needed or the request cannot be fulfilled.",
-        "parameters": {
+        "inputSchema": {
             "type": "object",
             "properties": {
                 "message": {
@@ -84,7 +84,7 @@ BASE_TOOLS = {
     {
         "name": "info",
         "description": "Use this tool to ask for more information about the user's request if it is unclear or incomplete.",
-        "parameters": {
+        "inputSchema": {
             "type": "object",
             "properties": {
                 "message": {

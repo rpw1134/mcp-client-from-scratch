@@ -20,7 +20,8 @@ class AppState:
     client_manager: Optional[ClientManager] = None
     openai_client: Optional[OpenAIClient] = None
     
-    def __init__(self):
+    async def startup(self) -> None:
+        """Startup logic to initialize resources."""
         # Startup: Initialize singletons
         self.redis_client = initialize_redis_client()
         if not self.redis_client:
@@ -32,13 +33,8 @@ class AppState:
         with open(config_path) as f:
             config_data = json.load(f)
         self.client_manager = ClientManager(config_data, self.redis_client)
-
-        logger.info(f"Redis connected: {self.redis_client.ping()}")
-        logger.info("SessionStore initialized")
-        logger.info("ClientManager loaded")
-    
-    async def startup(self) -> None:
-        """Startup logic to initialize resources."""
+        self.openai_client = OpenAIClient()
+         
          # Initialize all clients eagerly
         if not self.client_manager:
             raise RuntimeError("ClientManager not initialized.")
@@ -47,9 +43,14 @@ class AppState:
         # Log client status
         running = self.client_manager.get_running_clients()
         failed = self.client_manager.get_failed_clients()
-        logger.info(f"✓ Clients running: {list(running.keys())}")
+        logger.info(f"Clients running: {list(running.keys())}")
         if failed:
-            logger.warning(f"✗ Clients failed: {list(failed.keys())}")
+            logger.warning(f"Clients failed: {list(failed.keys())}")
+        
+        logger.info(f"Redis connected: {self.redis_client.ping()}")
+        logger.info("SessionStore initialized")
+        logger.info("ClientManager loaded")
+        logger.info("OpenAI client initialized")
     
     async def cleanup(self) -> None:
         """Cleanup logic to release resources."""
