@@ -1,0 +1,43 @@
+name: Update Postman Collection
+
+on:
+  push:
+    branches:
+      - main
+jobs:
+  update-postman:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install Dependencies
+        run: |
+          pip install poetry
+          poetry install
+          poetry add requests
+          npm i openapi-to-postmanv2
+          
+      - name: Generate OpenAPI schema
+        run: poetry run python -m mcp_client_scratch.scripts.generate_openapi_schema
+
+      - name: Convert to Postman collection
+        run: node src/mcp_client_scratch/scripts/convert_openapi_to_postman.js
+
+      - name: Send to Postman
+        env:
+          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+          POSTMAN_COLLECTION_ID: ${{ secrets.POSTMAN_COLLECTION_ID }}
+        run: poetry run python -m mcp_client_scratch.scripts.send_schema_to_postman
+      
+    
