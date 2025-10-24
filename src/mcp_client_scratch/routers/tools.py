@@ -7,6 +7,7 @@ router = APIRouter(prefix="/tools", tags=["tools"])
 @router.get("/")
 async def list_all_tools(client_manager = Depends(get_client_manager)) -> dict:
     """List all available tools across all running MCP clients."""
+    # testing to see if actions work
     try:
         running_clients = client_manager.get_running_clients()
         all_tools = {}
