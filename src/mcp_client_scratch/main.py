@@ -11,7 +11,7 @@ from .utils.constants import SERVER_URLS
 from .classes.MCPClient import HTTPMCPClient, STDIOMCPClient
 from .classes.SessionStore import SessionStore
 from .classes.ClientManager import ClientManager
-from .routers import tests, application, servers, clients, tools
+from .routers import tests, servers, clients, tools
 from .schemas.requests import MCPRequest, ChatRequest
 from .schemas.responses import MCPResponse
 from .utils.initialize_logic import initialize_redis_client
@@ -32,7 +32,6 @@ app = FastAPI(title="MCP Client: Scratch", version="1.0.0", lifespan=lifespan)
 
 # Include routers with flat structure
 app.include_router(tests.router)
-app.include_router(application.router)
 app.include_router(servers.router)
 app.include_router(clients.router)
 app.include_router(tools.router)
