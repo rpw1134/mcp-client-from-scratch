@@ -5,12 +5,13 @@ from typing import cast
 import json
 from collections import OrderedDict
 from ..dependencies.tests import get_stdio_client, reset_stdio_client, get_http_client, reset_http_client
-from ..dependencies.app_state import get_session_store, get_client_manager, get_openai_client
-from ..utils.constants import SERVER_URLS, SYSTEM_PROMPT_BASE, EXECUTE_PAYLOAD_TEMPLATE
+from ..dependencies.app_state import get_session_store
+from ..dependencies.tests import get_openai_client, get_vector_store
+from ..utils.constants import SYSTEM_PROMPT_BASE, EXECUTE_PAYLOAD_TEMPLATE
 from ..classes.MCPClient import STDIOMCPClient, HTTPMCPClient
 from ..classes.SessionStore import SessionStore
-from ..classes.ClientManager import ClientManager
 from ..classes.OpenAIClient import OpenAIClient
+from ..classes.VectorStore import VectorStore
 from ..schemas.session import ModelMessage
 from ..schemas.requests import ChatRequest
 from ..utils.parse_responses import parse_tool_arguments, parse_response_for_jrpc
@@ -39,7 +40,7 @@ async def get_tools(stdio_client: STDIOMCPClient = Depends(get_stdio_client)) ->
 @router.post("/stdio/tools/embeddings")
 async def batch_embed_tools(
     stdio_client: STDIOMCPClient = Depends(get_stdio_client),
-    openai_client: OpenAIClient = Depends(get_openai_client)
+    vector_store: VectorStore = Depends(get_vector_store)
 ) -> dict:
     """Batch embed all tools from the STDIO client into the vector store."""
     try:
@@ -50,7 +51,7 @@ async def batch_embed_tools(
             return {"message": "No tools to embed", "count": 0}
 
         # Batch embed the tools
-        await openai_client.batch_embed_tools(tools)
+        await vector_store.batch_embed_tools(tools)
 
         return {
             "message": "Tools successfully embedded",
@@ -64,11 +65,11 @@ async def batch_embed_tools(
 async def query_tools(
     query: str = Query(..., description="Query string to search for similar tools"),
     n_results: int = Query(default=10, description="Number of similar tools to return"),
-    openai_client: OpenAIClient = Depends(get_openai_client)
+    vector_store: VectorStore = Depends(get_vector_store)
 ) -> dict:
     """Query for similar tools using semantic search."""
     try:
-        similar_tools = await openai_client.query_similar_tools(query, n_results)
+        similar_tools = await vector_store.query_similar_tools(query, n_results)
 
         return {
             "query": query,

@@ -5,7 +5,11 @@ from ..classes.SessionStore import SessionStore
 from typing import Generator
 from ..utils.initialize_logic import initialize_redis_client
 from ..classes.MCPClient import HTTPMCPClient, STDIOMCPClient
+from ..classes.OpenAIClient import OpenAIClient
+from ..classes.VectorStore import VectorStore
 import logging
+import os
+
 
 logger = logging.getLogger("uvicorn.error")
 class StdioClientManager:
@@ -59,14 +63,60 @@ class HttpClientManager:
 
     @classmethod
     async def reset(cls) -> None:
-        """Reset the HTTP client instance and clean up resources."""
+        """Reset the HTTP client instance."""
+        if cls._instance is not None:
+            await cls._instance.close_connection()
+        cls._instance = None
+    
+class OpenAIClientManager:
+    """Singleton manager for a testable OpenAI client instance."""
+    _instance: Optional[OpenAIClient] = None
+
+    @classmethod
+    def get_client(cls) -> OpenAIClient:
+        """Get or create the OpenAI client instance.
+
+        Returns:
+            The OpenAI client instance
+
+        """
+        if cls._instance is None:
+            cls._instance = OpenAIClient(os.getenv("OPEN_AI_API_KEY"))
+
+        return cls._instance
+
+    @classmethod
+    async def reset(cls) -> None:
+        """Reset the async client instance and clean up resources."""
         if cls._instance is not None:
             try:
                 # Call close method if available
                 if hasattr(cls._instance, 'close_connection'):
-                    await cls._instance.close_connection()
+                    await cls._instance.close()
             except Exception as e:
-                logger.error(f"Error closing HTTP client: {e}")
+                logger.error(f"Error closing OpenAI client: {e}")
+        cls._instance = None
+
+class VectorStoreManager:
+    """Singleton manager for a testable VectorStore instance."""
+    _instance: Optional[VectorStore] = None
+
+    @classmethod
+    def get_instance(cls) -> VectorStore:
+        """Get or create the VectorStore instance.
+
+        Returns:
+            The VectorStore instance
+        """
+        if cls._instance is None:
+            openai_client = OpenAIClientManager.get_client()
+            cls._instance = VectorStore(openai_client=openai_client)
+
+        return cls._instance
+
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the VectorStore instance."""
         cls._instance = None
 
 async def get_stdio_client() -> STDIOMCPClient:
@@ -97,3 +147,19 @@ def get_session_store() -> Generator[SessionStore, None, None]:
     finally:
         if session_store:
             session_store.close()
+
+def get_openai_client() -> OpenAIClient:
+    """Dependency function to get the OpenAI client instance."""
+    return OpenAIClientManager.get_client()
+
+async def close_openai_client() -> None:
+    """Close the OpenAI client instance."""
+    await OpenAIClientManager.reset()
+
+def get_vector_store() -> VectorStore:
+    """Dependency function to get the VectorStore instance."""
+    return VectorStoreManager.get_instance()
+
+def reset_vector_store() -> None:
+    """Reset the VectorStore singleton."""
+    VectorStoreManager.reset()
