@@ -175,4 +175,8 @@ pyrightconfig.json
 
 server_config.json
 
+# Node.js
+node_modules
+package-lock.json
+
 # End of https://www.toptal.com/developers/gitignore/api/python

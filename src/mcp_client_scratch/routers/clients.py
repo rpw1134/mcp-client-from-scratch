@@ -1,19 +1,26 @@
 from fastapi import APIRouter, Depends
 from ..dependencies.app_state import get_client_manager
+from fastapi import Query
+from typing import Literal
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
 
 @router.get("/")
-async def list_clients(client_manager = Depends(get_client_manager)) -> dict:
-    """List all clients (running and failed)."""
+async def list_clients(client_manager = Depends(get_client_manager), status = Query(Literal["failed", "running"])) -> dict:
+    """List all MCP clients, optionally filtered by status."""
     try:
+        print(status)
         all_clients = client_manager.get_clients()
+        if status == "failed":
+            return {"clients": [name for name, client in all_clients.items() if isinstance(client, Exception)]}
+        elif status == "running":
+            return {"clients": [name for name, client in all_clients.items() if not isinstance(client, Exception)]}
         return {"clients": list(all_clients.keys())}
     except Exception as e:
         return {"error": str(e)}
 
-@router.get("/running/")
+@router.get("/running")
 async def get_running_clients(client_manager = Depends(get_client_manager)) -> dict:
     """Get all running clients."""
     try:
@@ -22,7 +29,7 @@ async def get_running_clients(client_manager = Depends(get_client_manager)) -> d
     except Exception as e:
         return {"error": str(e)}
 
-@router.get("/failed/")
+@router.get("/failed")
 async def get_failed_clients(client_manager = Depends(get_client_manager)) -> dict:
     """Get all failed clients."""
     try:
@@ -31,7 +38,7 @@ async def get_failed_clients(client_manager = Depends(get_client_manager)) -> di
     except Exception as e:
         return {"error": str(e)}
 
-@router.get("/{client_name}/")
+@router.get("/{client_name}")
 async def get_client_status_by_name(client_name: str, client_manager = Depends(get_client_manager)) -> dict:
     """Get status of a specific client by name."""
     try:
@@ -47,7 +54,7 @@ async def get_client_status_by_name(client_name: str, client_manager = Depends(g
     except Exception as e:
         return {"error": str(e)}
 
-@router.get("/{client_name}/status/")
+@router.get("/{client_name}/status")
 async def get_client_status_individual(client_name: str, client_manager = Depends(get_client_manager)) -> dict:
     """Get detailed status of a specific client by name."""
     try:
@@ -58,7 +65,7 @@ async def get_client_status_individual(client_name: str, client_manager = Depend
     except Exception as e:
         return {"error": str(e)}
 
-@router.get("/{client_name}/tools/")
+@router.get("/{client_name}/tools")
 async def get_client_tools(client_name: str, client_manager = Depends(get_client_manager)) -> dict:
     """Get tools for a specific MCP client."""
     try:
