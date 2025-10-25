@@ -2,19 +2,24 @@ import chromadb
 from typing import List
 import json
 import uuid
+from .OpenAIClient import OpenAIClient
+from ..utils.tools import hash_tool
 
 class VectorStore:
     """Manages vector storage and semantic search for tool embeddings."""
 
-    def __init__(self, openai_client):
+    def __init__(self, openai_client: OpenAIClient, persist_directory: str = ""):
         """Initialize vector store with ChromaDB client and OpenAI client.
 
         Args:
             openai_client: OpenAI client instance for creating embeddings
         """
         self.openai_client = openai_client
-        self._vector_store = chromadb.Client() # temporary vector store, cleans up on application exit
-        self._collection: chromadb.Collection = self._vector_store.create_collection(name="mcp_client_tools")
+        if persist_directory=="":
+            self._vector_store = chromadb.Client() # temporary vector store, cleans up on application exit
+        else:
+            self._vector_store = chromadb.PersistentClient(path=persist_directory)
+        self._collection: chromadb.Collection = self._vector_store.get_or_create_collection(name="mcp_client_tools")
 
     async def embed_tool(self, tool: dict) -> None:
         """Embed a single tool into the vector store.
@@ -25,13 +30,20 @@ class VectorStore:
         tool_text: str = f"""
         Tool Name: {tool['name']}
         Tool Description: {tool['description']}
-        Tool Parameters: {json.dumps(tool['inputSchema'])}
+        Tool InputSchema: {json.dumps(tool['inputSchema'])}
         """
+
         embedding: List[float] = await self.openai_client.create_embedding(tool_text)
         self._collection.add(
             ids=[str(uuid.uuid4())],
             embeddings=[embedding],
-            metadatas=[tool],
+            metadatas=[{
+                "name": tool.get('name', 'Unknown'),
+                "description": tool.get('description', 'No description'),
+                "inputSchema": json.dumps(tool.get('inputSchema',{})),
+                "source": tool.get('source', 'unknown'),
+                "hash": hash_tool(tool)
+            }],
         )
 
     async def batch_embed_tools(self, tools: dict[str, dict]) -> None:
@@ -45,8 +57,8 @@ class VectorStore:
         # Create text representations for all tools
         tool_texts = [
             f"""Tool Name: {tool.get('name', 'Unknown')}
-Tool Description: {tool.get('description', 'No description')}
-Tool Parameters: {json.dumps(tool.get('inputSchema', {}))}"""
+                Tool Description: {tool.get('description', 'No description')}
+                Tool InputSchema: {json.dumps(tool.get('inputSchema', {}))}"""
             for tool in tools_list
         ]
 
@@ -60,7 +72,9 @@ Tool Parameters: {json.dumps(tool.get('inputSchema', {}))}"""
             metadatas=[{
                 "name": tool.get('name', 'Unknown'),
                 "description": tool.get('description', 'No description'),
-                "inputSchema": json.dumps(tool.get('inputSchema',{}))
+                "inputSchema": json.dumps(tool.get('inputSchema',{})),
+                "source": tool.get('source', 'unknown'),
+                "hash": hash_tool(tool)
             } for tool in tools_list],
         )
 
@@ -80,3 +94,38 @@ Tool Parameters: {json.dumps(tool.get('inputSchema', {}))}"""
             n_results=n_results,
         )
         return results['metadatas'][0] if results['metadatas'] else []
+    
+    async def get_tool_hashes(self) -> dict:
+        """Retrieve all tool hashes stored in the vector store.
+
+        Returns:
+            List of tool hashes
+        """
+        all_items = self._collection.get()
+        if not all_items['metadatas']:
+            return {}
+        return {
+            str(metadata.get("name", "ERROR"))+":"+str(metadata.get("source", "ERROR")): metadata.get("hash", "")
+            for metadata in all_items['metadatas']
+        }
+        
+    async def sync_tools(self, tools: dict[str, dict]) -> None:
+        """Sync the vector store with the provided tools.
+
+        Args:
+            tools: Dictionary of tool dictionaries
+        """
+        existing_hashes = await self.get_tool_hashes()
+        tools_to_embed = {} 
+        for tool in tools.values():
+            tool_key = str(tool.get("name", "ERROR"))+":"+str(tool.get("source", "ERROR"))
+            tool_hash = hash_tool(tool) if tool_key != "ERROR:ERROR" else ""
+            if existing_hashes.get(tool_key) != tool_hash:
+                tools[tool.get("name", "unnamed")] = tool
+        if tools_to_embed:
+            await self.batch_embed_tools(tools_to_embed)
+        else:
+            print("Vector store is already up to date.")
+    
+    
+    

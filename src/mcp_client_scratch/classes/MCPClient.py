@@ -52,7 +52,7 @@ class BaseMCPClient(ABC):
         """
         for tool in tools:
             self.tools[tool["name"]] = tool
-            self.tools[tool["name"]]["source"] = "server"
+            self.tools[tool["name"]]["source"] = self.name
         
         
     

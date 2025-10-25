@@ -1,0 +1,35 @@
+{
+  "mcpServers": {
+    "everything": {
+      "command": "npm",
+      "args": ["run", "start"],
+      "wkdir": "/Users/ryanwilliams/Projects/Supplementals/servers/src/everything"
+    },
+    "everything_http": {
+      "url": "http://localhost:3001/mcp"
+    },
+    "github": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "-e",
+        "GITHUB_TOOLSETS",
+        "ghcr.io/github/github-mcp-server"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}",
+        "GITHUB_TOOLSETS": "repos"
+      }
+    },
+    "postman": {
+      "url": "https://mcp.postman.com/minimal",
+      "headers": {
+        "Authorization": "Bearer ${POSTMAN_API_KEY}"
+      }
+    }
+  }
+}

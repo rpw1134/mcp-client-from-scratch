@@ -179,4 +179,7 @@ server_config.json
 node_modules
 package-lock.json
 
+# ChromaDB
+chroma.sqlite3
+
 # End of https://www.toptal.com/developers/gitignore/api/python

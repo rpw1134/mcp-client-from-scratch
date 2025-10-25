@@ -40,7 +40,8 @@ async def get_tools(stdio_client: STDIOMCPClient = Depends(get_stdio_client)) ->
 @router.post("/stdio/tools/embeddings")
 async def batch_embed_tools(
     stdio_client: STDIOMCPClient = Depends(get_stdio_client),
-    vector_store: VectorStore = Depends(get_vector_store)
+    vector_store: VectorStore = Depends(get_vector_store),
+    sync = Query(default=True)
 ) -> dict:
     """Batch embed all tools from the STDIO client into the vector store."""
     try:
@@ -50,8 +51,11 @@ async def batch_embed_tools(
         if not tools:
             return {"message": "No tools to embed", "count": 0}
 
-        # Batch embed the tools
-        await vector_store.batch_embed_tools(tools)
+        # Batch embed the tools or sync
+        if sync:
+            await vector_store.sync_tools(tools)
+        else:
+            await vector_store.batch_embed_tools(tools)
 
         return {
             "message": "Tools successfully embedded",
