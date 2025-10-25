@@ -55,6 +55,8 @@ class AppState:
         logger.info(f"Clients running: {list(running.keys())}")
         if failed:
             logger.warning(f"Clients failed: {list(failed.keys())}")
+            
+        await self.vector_store.sync_tools(self.client_manager.get_all_tools())
         
         
         logger.info(f"Redis connected: {self.redis_client.ping()}")

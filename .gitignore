@@ -180,6 +180,6 @@ node_modules
 package-lock.json
 
 # ChromaDB
-chroma.sqlite3
+chroma_db
 
 # End of https://www.toptal.com/developers/gitignore/api/python

@@ -4,7 +4,10 @@ import json
 import uuid
 from .OpenAIClient import OpenAIClient
 from ..utils.tools import hash_tool
+import time
+import logging
 
+logger = logging.getLogger("uvicorn.error")
 class VectorStore:
     """Manages vector storage and semantic search for tool embeddings."""
 
@@ -35,7 +38,7 @@ class VectorStore:
 
         embedding: List[float] = await self.openai_client.create_embedding(tool_text)
         self._collection.add(
-            ids=[str(uuid.uuid4())],
+            ids=[tool.get('name', 'unknown')+tool.get('source', 'unknown')],
             embeddings=[embedding],
             metadatas=[{
                 "name": tool.get('name', 'Unknown'),
@@ -67,7 +70,7 @@ class VectorStore:
 
         # Add all embeddings to the collection
         self._collection.add(
-            ids=[str(uuid.uuid4()) for _ in tools_list],
+            ids=[tool.get('name', 'unknown')+tool.get('source', 'unknown') for tool in tools_list],
             embeddings=[*tool_embeddings],
             metadatas=[{
                 "name": tool.get('name', 'Unknown'),
@@ -116,16 +119,18 @@ class VectorStore:
             tools: Dictionary of tool dictionaries
         """
         existing_hashes = await self.get_tool_hashes()
+        logger.debug("Existing hashes in vector store:", existing_hashes)
         tools_to_embed = {} 
         for tool in tools.values():
             tool_key = str(tool.get("name", "ERROR"))+":"+str(tool.get("source", "ERROR"))
             tool_hash = hash_tool(tool) if tool_key != "ERROR:ERROR" else ""
             if existing_hashes.get(tool_key) != tool_hash:
-                tools[tool.get("name", "unnamed")] = tool
+                tools_to_embed[tool.get("name", "unnamed")] = tool
         if tools_to_embed:
             await self.batch_embed_tools(tools_to_embed)
         else:
-            print("Vector store is already up to date.")
+            logger.debug("Vector store is already up to date; no new tools to embed.")
+        
     
     
     

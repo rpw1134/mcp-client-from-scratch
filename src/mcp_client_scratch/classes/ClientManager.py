@@ -227,6 +227,18 @@ class ClientManager:
         """
         return self._clients.copy()
 
+    def get_all_tools(self) -> Dict[str, dict]:
+        """Get all tools from all running clients.
+
+        Returns:
+            Dictionary mapping server names to their tools
+        """
+        all_tools = {}
+        for client in self.get_running_clients().values():
+            for name, tool in client.tools.items():
+                all_tools[name] = tool
+        return all_tools
+
     def get_client_status(self) -> Dict[str, dict]:
         """Get status of all clients (running and failed).
 

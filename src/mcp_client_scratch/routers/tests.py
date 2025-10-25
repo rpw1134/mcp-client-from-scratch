@@ -52,7 +52,8 @@ async def batch_embed_tools(
             return {"message": "No tools to embed", "count": 0}
 
         # Batch embed the tools or sync
-        if sync:
+        if sync=="true":
+            print("Syncing tools to vector store...")
             await vector_store.sync_tools(tools)
         else:
             await vector_store.batch_embed_tools(tools)
