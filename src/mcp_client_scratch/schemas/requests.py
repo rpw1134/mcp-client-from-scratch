@@ -3,7 +3,6 @@ from pydantic import BaseModel
 
 class ChatRequest(BaseModel):
     """Request model for chat messages."""
-
     message: str
 
 class MCPRequest(BaseModel):

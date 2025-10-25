@@ -41,7 +41,7 @@ class OpenAIClient:
         messages: List[ChatCompletionMessageParam],
         model: str = "gpt-4o-mini",
         max_tokens: Optional[int] = None,
-        temperature: float = 1.0,
+        temperature: float = 0.7,
         **kwargs
     ) -> str:
         """Create a chat completion.

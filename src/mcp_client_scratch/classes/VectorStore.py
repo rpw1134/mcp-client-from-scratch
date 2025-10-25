@@ -119,7 +119,7 @@ class VectorStore:
             tools: Dictionary of tool dictionaries
         """
         existing_hashes = await self.get_tool_hashes()
-        logger.debug("Existing hashes in vector store:", existing_hashes)
+        logger.debug(f"Existing tools in vector store: {list(existing_hashes.keys())})")
         tools_to_embed = {} 
         for tool in tools.values():
             tool_key = str(tool.get("name", "ERROR"))+":"+str(tool.get("source", "ERROR"))
@@ -129,7 +129,7 @@ class VectorStore:
         if tools_to_embed:
             await self.batch_embed_tools(tools_to_embed)
         else:
-            logger.debug("Vector store is already up to date; no new tools to embed.")
+            logger.info("Vector store is already up to date; no new tools to embed.")
         
     
     
