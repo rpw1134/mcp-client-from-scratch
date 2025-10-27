@@ -119,6 +119,7 @@ class VectorStore:
             tools: Dictionary of tool dictionaries
         """
         existing_hashes = await self.get_tool_hashes()
+        print(existing_hashes)
         logger.debug(f"Existing tools in vector store: {list(existing_hashes.keys())})")
         tools_to_embed = {} 
         for tool in tools.values():

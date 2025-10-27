@@ -30,10 +30,10 @@ async def handle_agent_request(request: ChatRequest, session_id, vector_store: V
     new_message = ModelMessage(role="user", content=req)
     session_store.post_message(session_id, new_message)
     session_messages = session_store.get_session_messages(session_id)
-    relevant_tools = (await vector_store.query_similar_tools(req,3)).copy()
+    relevant_tools = (await vector_store.query_similar_tools(req,5)).copy()
     for tool in relevant_tools:
         del tool["hash"]
     relevant_tools = json.dumps(relevant_tools)
-    session_messages+=[ModelMessage(role="system", content=f"{SYSTEM_PROMPT_BASE} {relevant_tools}")]
     response_message = await openai_client.tool_selection_request(system_prompt=f"{SYSTEM_PROMPT_BASE} {BASE_TOOLS} {relevant_tools}", messages = [cast(ChatCompletionMessageParam, message) for message in session_messages])
+    session_store.post_message(session_id, ModelMessage(role="assistant", content=response_message))
     return {"res":response_message, "relevant_tools_in_query": json.loads(relevant_tools), "all_session_messages": session_messages}
