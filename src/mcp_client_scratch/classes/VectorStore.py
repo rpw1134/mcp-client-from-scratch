@@ -119,7 +119,6 @@ class VectorStore:
             tools: Dictionary of tool dictionaries
         """
         existing_hashes = await self.get_tool_hashes()
-        print(existing_hashes)
         logger.debug(f"Existing tools in vector store: {list(existing_hashes.keys())})")
         tools_to_embed = {} 
         for tool in tools.values():
@@ -131,6 +130,12 @@ class VectorStore:
             await self.batch_embed_tools(tools_to_embed)
         else:
             logger.info("Vector store is already up to date; no new tools to embed.")
+            
+            
+    async def clear_store(self) -> None:
+        """Clear all data from the vector store."""
+        self._vector_store.delete_collection(name="mcp_client_tools")
+        self._collection = self._vector_store.get_or_create_collection(name="mcp_client_tools")
         
     
     

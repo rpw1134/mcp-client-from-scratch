@@ -18,11 +18,20 @@ async def list_all_tools(client_manager: ClientManager = Depends(get_client_mana
     except Exception as e:
         return {"error": str(e)}
     
-@router.get("/tools/embeddings")
+@router.get("/embeddings")
 async def get_tool_embeddings(vector_store: VectorStore = Depends(get_vector_store)) -> dict:
     """Get hashes for all tools in the vector store."""
     try:
         tools_embeddings = await vector_store.get_tool_hashes()
         return {"tool_embeddings": tools_embeddings}
+    except Exception as e:
+        return {"error": str(e)}
+    
+@router.delete("/embeddings")
+async def clear_tool_embeddings(vector_store: VectorStore = Depends(get_vector_store)) -> dict:
+    """Clear all tool embeddings from the vector store."""
+    try:
+        await vector_store.clear_store()
+        return {"status": "Tool embeddings cleared successfully"}
     except Exception as e:
         return {"error": str(e)}

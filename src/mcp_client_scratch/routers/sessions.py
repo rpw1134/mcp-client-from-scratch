@@ -30,7 +30,7 @@ async def handle_agent_request(request: ChatRequest, session_id, vector_store: V
     new_message = ModelMessage(role="user", content=req)
     session_store.post_message(session_id, new_message)
     session_messages = session_store.get_session_messages(session_id)
-    relevant_tools = (await vector_store.query_similar_tools(req,5)).copy()
+    relevant_tools = await vector_store.query_similar_tools(req,5)
     for tool in relevant_tools:
         del tool["hash"]
     relevant_tools = json.dumps(relevant_tools)

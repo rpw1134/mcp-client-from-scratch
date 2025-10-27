@@ -236,7 +236,8 @@ class ClientManager:
         all_tools = {}
         for client in self.get_running_clients().values():
             for name, tool in client.tools.items():
-                all_tools[name] = tool
+                # unique id for embedding purposes
+                all_tools[name+tool["source"]] = tool
         return all_tools
 
     def get_client_status(self) -> Dict[str, dict]:
