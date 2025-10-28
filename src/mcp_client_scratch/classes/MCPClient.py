@@ -53,6 +53,17 @@ class BaseMCPClient(ABC):
         for tool in tools:
             self.tools[tool["name"]] = tool
             self.tools[tool["name"]]["source"] = self.name
+    
+    def get_tool_by_name(self, tool_name: str) -> Optional[dict]:
+        """Retrieve a tool by its name.
+
+        Args:
+            tool_name: Name of the tool to retrieve
+
+        Returns:
+            The tool dictionary if found, else None
+        """
+        return self.tools.get(tool_name, None)
         
         
     

@@ -1,23 +1,35 @@
 from ..schemas.session import ModelMessage
 from ..schemas.requests import ChatRequest
+from ..classes.SessionStore import SessionStore
+from ..classes.VectorStore import VectorStore
+from ..classes.OpenAIClient import OpenAIClient
+from ..classes.ClientManager import ClientManager
 import json
 from openai.types.chat import ChatCompletionMessageParam
 from ..utils.constants import SYSTEM_PROMPT_BASE, BASE_TOOLS
 from typing import cast
 import uuid
+from collections import deque
 
 class Agent:
     
     # An agent shall be responsible for keeping track of: session context length, current requests that need more information aka tools that are waiting on information, current session. 
     # An agent shall be responsible for summarizing session context if exceeds a context length, removing tools from pending requests after they are fulfilled (or if the requests exceed the ttl)
     
-    def __init__(self, session_store, vector_store, openai_client):
-        self.session_store = session_store
-        self.vector_store = vector_store
-        self.openai_client = openai_client
+    def __init__(self, session_store, vector_store, openai_client, client_manager):
+        self.session_store: SessionStore = session_store
+        self.vector_store: VectorStore = vector_store
+        self.openai_client: OpenAIClient = openai_client
+        self.client_manager: ClientManager = client_manager
         self.session_id = uuid.uuid4().hex
+        self.queue = deque()
+        self.pending_tools = {}
+        self.ttl = 5
+        self.time = 0
+        
     
     async def process_request(self, user_message: str):
+        self._before()
         new_message = ModelMessage(role="user", content=user_message)
         self.session_store.post_message(self.session_id, new_message)
         session_messages = self.session_store.get_session_messages(self.session_id)
@@ -25,7 +37,8 @@ class Agent:
         for tool in relevant_tools:
             del tool["hash"]
         relevant_tools = json.dumps(relevant_tools)
-        response_message = await self.openai_client.tool_selection_request(system_prompt=f"{SYSTEM_PROMPT_BASE} {BASE_TOOLS} {relevant_tools}", messages = [cast(ChatCompletionMessageParam, message) for message in session_messages], model='gpt-4o')
+        response_message = await self.openai_client.tool_selection_request(system_prompt=f"{SYSTEM_PROMPT_BASE} {BASE_TOOLS} {self.pending_tools} {relevant_tools}", messages = [cast(ChatCompletionMessageParam, message) for message in session_messages], model='gpt-4o')
+        self._process_tool_response(response_message)
         self.session_store.post_message(self.session_id, ModelMessage(role="assistant", content=response_message))
         return {"res":response_message, "relevant_tools_in_query": json.loads(relevant_tools), "all_session_messages": session_messages}
     
@@ -33,3 +46,47 @@ class Agent:
         new_session_id = self.session_store.create_session()
         self.session_id = new_session_id
         return new_session_id
+    
+    def _process_tool_response(self, tool_response: str):
+        """Process the tool response from the agent and update session state accordingly."""
+        try:
+            # check if info is being asked for a tool
+            response_data = json.loads(tool_response).get("params")
+            print(f"Processing tool response: {response_data}")
+            tool_name = response_data.get("name", "")
+            if tool_name == 'info' and response_data.get("arguments").get("tool_to_be_populated", None):
+                tool_to_be_populated = response_data["arguments"]["tool_to_be_populated"]
+                client_name = tool_to_be_populated.get("source", "")
+                tool_name = tool_to_be_populated.get("name", "")
+                if not client_name or not tool_name:
+                    return
+                client = self.client_manager.get_client(client_name)
+                if not client:
+                    return
+                tool = client.get_tool_by_name(tool_name)
+                if not tool:
+                    return
+                
+                # if so, add to pending tools with ttl
+                self.queue.append((tool_name+":"+client_name, self.time+self.ttl))
+                self.pending_tools[tool_name+":"+client_name] = tool
+            
+            # TODO: get client name and append to check if inside of pending tools
+            if tool_name in self.pending_tools:
+                # if tool is being populated, remove from pending tools
+                print("DEL")
+                del self.pending_tools[tool_name]
+            return True
+        except json.JSONDecodeError:
+            print("Failed to decode tool response JSON.")
+            return False
+        
+    def _before(self):
+        # Increment time and clean up expired pending tools
+        # TODO: LRU or other better structure for pending tools
+        self.time+=1
+        if self.queue and self.queue[0][1]<=self.time:
+            expired_tool = self.queue.popleft()
+            if expired_tool[0] in self.pending_tools:
+                del self.pending_tools[expired_tool[0]]
+        print(f"Pending tools: {self.pending_tools.keys()} at time {self.time}")

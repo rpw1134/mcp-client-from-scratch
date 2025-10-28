@@ -65,7 +65,7 @@ class AppState:
         
         await self.vector_store.sync_tools(self.client_manager.get_all_tools())
         
-        self.agent = Agent(self.session_store, self.vector_store, self.openai_client)
+        self.agent = Agent(self.session_store, self.vector_store, self.openai_client, self.client_manager)
         logger.info("Agent initialized")
     
     async def cleanup(self) -> None:
