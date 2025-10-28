@@ -51,7 +51,7 @@ EXAMPLE_TOOL_RESPONSE = {
 BASE_TOOLS = {
     "chat": {
         "name": "chat",
-        "description": "Use this tool to answer general questions or have a conversation.",
+        "description": "Answer general questions or have a conversation.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -67,7 +67,7 @@ BASE_TOOLS = {
     "none":
     {
         "name": "none",
-        "description": "Use this tool when no action is needed or the request cannot be fulfilled.",
+        "description": "Tell the user that no action is needed or the request cannot be fulfilled.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -75,7 +75,7 @@ BASE_TOOLS = {
                     "type": "string",
                     "description": "The reason why no action is taken."}
             },
-            "required": ["reason"],
+            "required": ["message"],
             "additionalProperties": False
         },
         "source": "native"
@@ -83,13 +83,25 @@ BASE_TOOLS = {
     "info":
     {
         "name": "info",
-        "description": "Use this tool to ask for more information about the user's request if it is unclear or incomplete.",
+        "description": "Ask for more information about the user's request if it is unclear or incomplete.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "message": {
                     "type": "string",
-                    "description": "The message requesting more information from the user."}
+                    "description": "The message requesting more information from the user."},
+                "tool_to_be_populated": {
+                    "type": "object",
+                    "properties":{
+                        "name": {
+                            "type": "string",
+                            "description": "The name of the tool that will be used once more information is gathered."
+                        },
+                        "source": {
+                            "type": "string",
+                            "description": "The server source of the tool that will be used once more information is gathered."
+                    }
+                }
             },
             "required": ["reason"],
             "additionalProperties": False
@@ -97,9 +109,10 @@ BASE_TOOLS = {
         "source": "native"
     }
 }
+}
 
 SYSTEM_PROMPT_BASE = f"You are a firendly AI Agent who has been given a list of tools to help people with their tasks. Think of these as bonus skills. Your job is to take in a users request, reference _only_ the available tools as defined below after TOOLS, and decide which tool is best to use given the request. After which, you will populate a json object with necessary properties provided by the users prompt. For example, if a user asks you to add two numbers together -- 5 and 4 -- AND you have access to an addition tool that asks for parameters a and b, respond with\n {json.dumps(EXAMPLE_TOOL_RESPONSE)}\n Do not assume tools exist. Here are a list of rules you _must_ follow:\
-\n1) You must always respond in the valid JSON format described in the above example. You may not add any additional top level attributes.\
+\n1) You must always respond in the valid JSON format described in the above example. You may not add any additional top level attributes. The name of the tool MUST be present.\
 \n2) You must only use the tools defined below after TOOLS. If you may accomplish a task without the use of an explicitly defined tool, you may do so by responding with the 'chat' tool. For example, if I ask you to multiply two numbers, do not respond with a multiplication tool unless it exists; you may instead multiply them on your own. This applies to all kinds of requests. DO NOT MAKE UP TOOLS! If you require more information from the user, whether it is for an explicit tool call or simply for you to gain information to accomplish the task without a tool, use the 'info' tool. If a request cannot and will not be able to be accomplished, use the 'none' tool and ensure you tell the user why you cannot accomplish their request. You cannot and will not be able to use any remote services unless they are listed as tools.\
 \n3) You must only respond with one tool per request.\
 \n4) You must populate all required parameters for a tool.\

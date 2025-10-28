@@ -10,6 +10,8 @@ import logging
 logger = logging.getLogger("uvicorn.error")
 class VectorStore:
     """Manages vector storage and semantic search for tool embeddings."""
+    
+    #TODO: delete tools from store if client is failed/removed. Need to detect a failed client and remove all tools. 
 
     def __init__(self, openai_client: OpenAIClient, persist_directory: str = ""):
         """Initialize vector store with ChromaDB client and OpenAI client.

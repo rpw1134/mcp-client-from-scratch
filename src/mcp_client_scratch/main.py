@@ -11,7 +11,7 @@ from .utils.constants import SERVER_URLS
 from .classes.MCPClient import HTTPMCPClient, STDIOMCPClient
 from .classes.SessionStore import SessionStore
 from .classes.ClientManager import ClientManager
-from .routers import tests, servers, clients, tools, sessions
+from .routers import tests, servers, clients, tools, agent
 from .schemas.requests import MCPRequest, ChatRequest
 from .schemas.responses import MCPResponse
 from .utils.initialize_logic import initialize_redis_client
@@ -35,7 +35,7 @@ app.include_router(tests.router)
 app.include_router(servers.router)
 app.include_router(clients.router)
 app.include_router(tools.router)
-app.include_router(sessions.router)
+app.include_router(agent.router)
 
 @app.get("/")
 async def root() -> dict[str, str]:

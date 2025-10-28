@@ -5,6 +5,7 @@ from redis import Redis
 from ..classes.SessionStore import SessionStore
 from ..classes.ClientManager import ClientManager
 from ..classes.OpenAIClient import OpenAIClient
+from ..classes.Agent import Agent
 from ..classes.VectorStore import VectorStore
 from ..utils.initialize_logic import initialize_redis_client
 import json
@@ -21,6 +22,7 @@ class AppState:
     client_manager: Optional[ClientManager] = None
     openai_client: Optional[OpenAIClient] = None
     vector_store: Optional[VectorStore] = None
+    agent: Optional[Agent] = None
     
     async def startup(self) -> None:
         """Startup logic to initialize resources."""
@@ -28,15 +30,19 @@ class AppState:
         self.redis_client = initialize_redis_client()
         if not self.redis_client:
             raise RuntimeError("Failed to initialize Redis client.")
+        logger.info(f"Redis connected: {self.redis_client.ping()}")
         
         # Initialize the session store with above redis client
         self.session_store = SessionStore(redis_client=self.redis_client)
+        logger.info("Session Store initialized")
         
         # Initialize OpenAI for requests and embeddings
         self.openai_client = OpenAIClient()
-
+        logger.info("OpenAI client initialized")
+        
         # Initialize VectorStore with OpenAI client for embedding persistence
         self.vector_store = VectorStore(self.openai_client, os.getenv("CHROMA_PERSIST_LOCATION", ""))
+        logger.info("Vector Store initialized")
         
         # Load server config from file and initialize client manager
         config_path = Path(__file__).parent.parent / "server_config.json"
@@ -48,6 +54,7 @@ class AppState:
         if not self.client_manager:
             raise RuntimeError("ClientManager not initialized.")
         await self.client_manager.initialize_clients()
+        logger.info("Client Manager initialized")
 
         # Log client status
         running = self.client_manager.get_running_clients()
@@ -58,12 +65,8 @@ class AppState:
         
         await self.vector_store.sync_tools(self.client_manager.get_all_tools())
         
-        
-        logger.info(f"Redis connected: {self.redis_client.ping()}")
-        logger.info("Session Store initialized")
-        logger.info("Client Manager loaded")
-        logger.info("OpenAI client initialized")
-        logger.info("Vector Store initialized")
+        self.agent = Agent(self.session_store, self.vector_store, self.openai_client)
+        logger.info("Agent initialized")
     
     async def cleanup(self) -> None:
         """Cleanup logic to release resources."""
@@ -83,6 +86,9 @@ class AppState:
         if self.vector_store:
             # Add any necessary cleanup for vector store if needed
             logger.info("Vector Store cleaned up")
+        if self.agent:
+            # Add any necessary cleanup for agent if needed
+            logger.info("Agent cleaned up")
         self.redis_client = None
         self.session_store = None
         self.client_manager = None
@@ -165,3 +171,16 @@ def get_vector_store() -> VectorStore:
     if app_state.vector_store is None:
         raise RuntimeError("VectorStore not initialized. Ensure lifespan startup completed.")
     return app_state.vector_store
+
+def get_agent() -> Agent:
+    """Dependency to get Agent singleton.
+
+    Returns:
+        Agent instance
+
+    Raises:
+        RuntimeError: If Agent not initialized
+    """
+    if app_state.agent is None:
+        raise RuntimeError("Agent not initialized. Ensure lifespan startup completed.")
+    return app_state.agent
