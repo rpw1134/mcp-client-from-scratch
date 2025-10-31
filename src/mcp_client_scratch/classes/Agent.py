@@ -30,20 +30,54 @@ class Agent:
         
     
     async def process_request(self, user_message: str):
+        # Before processing, clean up expired pending tools
         self._before()
+        
+        # store user message in session
         new_message = ModelMessage(role="user", content=user_message)
         self.session_store.post_message(self.session_id, new_message)
+        
+        # get relevant context for the request
         session_messages = self.session_store.get_session_messages(self.session_id)
         relevant_tools = await self.vector_store.query_similar_tools(user_message,5)
+        
+        # cleanup for request
         for tool in relevant_tools:
             del tool["hash"]
+            
+        # convert to json string for prompt
         relevant_tools = json.dumps(relevant_tools)
         response_message = await self.openai_client.tool_selection_request(system_prompt=f"{SYSTEM_PROMPT_BASE} {BASE_TOOLS} {self.pending_tools} {relevant_tools}", messages = [cast(ChatCompletionMessageParam, message) for message in session_messages], model='gpt-4o')
+        
+        # check response for tool calls that need to be added to pending tools
         self._process_tool_response(response_message)
+        
+        # add message to session
         self.session_store.post_message(self.session_id, ModelMessage(role="assistant", content=response_message))
-        return {"res":response_message, "relevant_tools_in_query": json.loads(relevant_tools), "all_session_messages": session_messages}
+        return {"res":response_message}
     
-    async def create_new_agent_session(self):
+    async def call_tool(self, agent_response: str):
+        try:
+            agent_response_json: dict = json.loads(agent_response)
+            call_source = agent_response_json.get("source","")
+            tool = agent_response_json.get("params",{})
+            if call_source == "native":
+                return "Native tool calls not yet implemented."
+            elif call_source == "":
+                raise RuntimeError("No source specified in tool call.")
+            client = self.client_manager.get_client(call_source)
+            if not client:
+                raise RuntimeError(f"Client {call_source} not found.")
+            if not tool:
+                raise RuntimeError(f"No tool specified in tool call.")
+            response = await client.send_request(tool, function="execute")
+            return response
+        except RuntimeError as e:
+            return f"I encountered an error while processing your request. Please try again! Error details: {str(e)}"
+        except json.JSONDecodeError:
+            return "I encountered an error while processing your request. Please try again!"
+    
+    def create_new_agent_session(self):
         new_session_id = self.session_store.create_session()
         self.session_id = new_session_id
         return new_session_id

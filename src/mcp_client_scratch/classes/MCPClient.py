@@ -1,4 +1,4 @@
-from ..utils.constants import INIT_HEADERS, INIT_PAYLOAD, TOOLS_PAYLOAD, BASE_TOOLS
+from ..utils.constants import INIT_HEADERS, INIT_PAYLOAD, TOOLS_PAYLOAD, EXECUTE_PAYLOAD_TEMPLATE
 from ..utils.parse_responses import parse_sse, poll_sse, parse_batched_sse
 import json
 import asyncio
@@ -26,7 +26,7 @@ class BaseMCPClient(ABC):
         pass
 
     @abstractmethod
-    async def send_request(self, payload: dict) -> dict:
+    async def send_request(self, tool_params: dict, function: str) -> dict:
         """Send a request to the MCP server."""
         pass
 
@@ -142,7 +142,7 @@ class STDIOMCPClient(BaseMCPClient):
             await self.kill_process()
             return {"error": f"Failed to send initialization message: {e}"}
         
-    async def send_request(self, payload: dict) -> dict:
+    async def send_request(self, tool_params: dict, function: str) -> dict:
         """Send a JSON-RPC request to the MCP server.
 
         Args:
@@ -157,12 +157,16 @@ class STDIOMCPClient(BaseMCPClient):
         try:
             if not self.process or not self.process.is_running():
                 raise RuntimeError("Subprocess not initialized or not running.")
-
+            if function == "get":
+                payload = {**TOOLS_PAYLOAD}
+            else:
+                payload = {**EXECUTE_PAYLOAD_TEMPLATE}
             curr_id = self.current_id
             self.current_id += 1
-            request_payload = payload.copy()
-            request_payload["id"] = curr_id
-            request = json.dumps(request_payload)
+            payload["params"] = tool_params
+            payload["id"] = curr_id
+            request = json.dumps(payload)
+            print(request)
             await self.process.write_stdin(request)
 
             self.waiting_requests[curr_id] = asyncio.Future()
@@ -210,7 +214,7 @@ class STDIOMCPClient(BaseMCPClient):
         Returns:
             Dictionary of available tools
         """
-        response = await self.send_request(TOOLS_PAYLOAD)
+        response = await self.send_request({}, function="get")
         if "result" in response and "tools" in response["result"]:
             self._set_tools(response["result"]["tools"])
         else:
@@ -327,12 +331,17 @@ class HTTPMCPClient(BaseMCPClient):
         except Exception as e:
             return {"error": f"Unexpected error: {e}"}
     
-    async def send_request(self, payload: dict) -> dict:
+    async def send_request(self, tool_params: dict, function: str) -> dict:
         try:
             if not self.httpx_client:
                 raise RuntimeError("HTTP connection not initialized.")
+            if function == "get":
+                payload = {**TOOLS_PAYLOAD}
+            else:
+                payload = {**EXECUTE_PAYLOAD_TEMPLATE}
             curr_id = self.current_id
             self.current_id += 1
+            payload["params"] = tool_params
             payload["id"] = curr_id
             async with self.httpx_client.stream("POST", self.url, json=payload, headers=self._build_headers()) as response:
                 content_type = response.headers.get("Content-Type", "")
@@ -349,8 +358,7 @@ class HTTPMCPClient(BaseMCPClient):
 
     async def get_tools(self) -> dict:
         """Retrieve tools from the HTTP MCP server."""
-        payload = TOOLS_PAYLOAD.copy()
-        response = await self.send_request(payload)
+        response = await self.send_request({}, function="get")
         if "result" in response and "tools" in response["result"]:
             self._set_tools(response["result"]["tools"])
         else:

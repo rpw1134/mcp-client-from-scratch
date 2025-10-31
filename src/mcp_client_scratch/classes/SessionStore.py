@@ -11,7 +11,7 @@ class SessionStore():
         self.redis_client = redis_client
     
     def create_session(self)-> str:
-        """Create a new session with the given session ID."""
+        """Create a new session."""
         session_id = uuid4().hex
         # Create an empty list for the session with expiration
         self.redis_client.lpush(session_id, "")  # Push empty placeholder
