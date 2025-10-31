@@ -48,7 +48,7 @@ class Agent:
         # convert to json string for prompt
         relevant_tools = json.dumps(relevant_tools)
         response_message = await self.openai_client.tool_selection_request(system_prompt=f"{SYSTEM_PROMPT_BASE} {BASE_TOOLS} {self.pending_tools} {relevant_tools}", messages = [cast(ChatCompletionMessageParam, message) for message in session_messages], model='gpt-4o')
-        
+        response_message = format_tool_response(response_message)
         # check response for tool calls that need to be added to pending tools
         self._process_tool_response(response_message)
         
@@ -86,7 +86,7 @@ class Agent:
         """Process the tool response from the agent and update session state accordingly."""
         try:
             # get all possible needed data from tool response
-            tool_response_json: dict = json.loads(format_tool_response(tool_response))
+            tool_response_json: dict = json.loads(tool_response)
             params: dict = tool_response_json.get("params", {})
             
             tool_name = params.get("name", "")
