@@ -4,6 +4,7 @@ from ..classes.SessionStore import SessionStore
 from ..classes.VectorStore import VectorStore
 from ..classes.OpenAIClient import OpenAIClient
 from ..classes.ClientManager import ClientManager
+from ..utils.parse_responses import format_tool_response
 import json
 from openai.types.chat import ChatCompletionMessageParam
 from ..utils.constants import SYSTEM_PROMPT_BASE, BASE_TOOLS
@@ -50,33 +51,39 @@ class Agent:
     def _process_tool_response(self, tool_response: str):
         """Process the tool response from the agent and update session state accordingly."""
         try:
-            # check if info is being asked for a tool
-            response_data = json.loads(tool_response).get("params")
-            print(f"Processing tool response: {response_data}")
-            tool_name = response_data.get("name", "")
-            if tool_name == 'info' and response_data.get("arguments").get("tool_to_be_populated", None):
-                tool_to_be_populated = response_data["arguments"]["tool_to_be_populated"]
-                client_name = tool_to_be_populated.get("source", "")
-                tool_name = tool_to_be_populated.get("name", "")
-                if not client_name or not tool_name:
+            # get all possible needed data from tool response
+            tool_response_json: dict = json.loads(format_tool_response(tool_response))
+            params: dict = tool_response_json.get("params", {})
+            
+            tool_name = params.get("name", "")
+            tool_source = tool_response_json.get("source", "")
+            
+            tool_to_be_populated: dict = params.get("arguments", {}).get("tool_to_be_populated", {})
+            client_name = tool_to_be_populated.get("source", "")
+            tool_to_be_populated_name = tool_to_be_populated.get("name", "")
+            
+            # check if tool is 'info'. If so and if there is a tool to come back to, add to pending tools
+            if tool_name == 'info' and len(tool_to_be_populated)>0:
+                if not client_name or not tool_to_be_populated_name:
                     return
                 client = self.client_manager.get_client(client_name)
                 if not client:
                     return
-                tool = client.get_tool_by_name(tool_name)
+                tool = client.get_tool_by_name(tool_to_be_populated_name)
                 if not tool:
                     return
                 
                 # if so, add to pending tools with ttl
-                self.queue.append((tool_name+":"+client_name, self.time+self.ttl))
-                self.pending_tools[tool_name+":"+client_name] = tool
+                self.queue.append((tool_to_be_populated_name+":"+client_name, self.time+self.ttl))
+                self.pending_tools[tool_to_be_populated_name+":"+client_name] = tool
             
-            # TODO: get client name and append to check if inside of pending tools
-            if tool_name in self.pending_tools:
-                # if tool is being populated, remove from pending tools
-                print("DEL")
-                del self.pending_tools[tool_name]
+            # else, if tool is not 'info', check if it fulfills a pending tool
+            else:
+                unique_key = tool_name+":"+tool_source
+                if unique_key in self.pending_tools:
+                    del self.pending_tools[unique_key]
             return True
+        
         except json.JSONDecodeError:
             print("Failed to decode tool response JSON.")
             return False

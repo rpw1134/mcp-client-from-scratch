@@ -112,3 +112,17 @@ async def parse_response_for_jrpc(response: dict) -> dict:
     """
     del response["source"]
     return response
+
+def format_tool_response(tool_response: str) -> str:
+    """Format the tool response string by removing unwanted characters.
+
+    Args:
+        tool_response: The raw tool response string
+
+    Returns:
+        Formatted tool response string
+    """
+    formatted_response = tool_response.replace("'''json", "").replace("```json", "").replace("```", "").strip()
+    return formatted_response
+
+        
